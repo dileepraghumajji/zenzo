@@ -54,7 +54,7 @@ packages/
 ### Session 2 — 2026-03-23
 **Done:**
 - Complete UI/UX design system for the entire product
-- All design docs in `docs/design/` (16 files):
+- All design docs in `docs/design/` (17 files):
   - `00-design-philosophy.md` — one-pager: visual identity, the three tests
   - `01-design-system.md` — colours (warm orange primary), typography (Inter), spacing (4px base), borders, shadows, component inventory
   - `02-navigation-ia.md` — full site map, sidebar/bottom nav, role-based nav, transitions
@@ -73,6 +73,17 @@ packages/
   - `15-components.md` — detailed specs: Button, Input, Badge, Avatar, StatCard, DataTable, Modal, Toast, EmptyState, AttendanceToggle
   - `16-micro-interactions-responsive.md` — motion guidelines, breakpoints, responsive rules, performance budget
 
+### Session 3 — 2026-03-23
+**Done:**
+- Reviewed `temp-features.md` as CEO/CTO — identified gaps in schema, RLS, API routes, guardian model, acceptance criteria
+- Produced `FEATURES.md` (1,415 lines) — production-grade feature spec:
+  - 13-table database schema with full SQL + RLS policies + migration order
+  - P0 features (9 sections) with acceptance criteria, validation rules, API routes
+  - P1 features (9 sections) with Razorpay integration, member portal token spec, guardian model
+  - P2 features (7 sections) scoped for post-launch growth
+  - Complete API route map (all Next.js route handlers)
+  - Implementation rules for coding agents (10 non-negotiable rules)
+
 ---
 
 ## Status
@@ -85,20 +96,26 @@ packages/
 - [x] Shared packages (ui, utils, config)
 - [x] README + CLAUDE.md
 - [x] Complete UI/UX design system (`docs/design/`)
+- [x] Production-grade feature spec (`FEATURES.md`)
 
 ### In Progress
 - nothing currently active
 
-### Up Next (Phase 1 build order)
-1. **Auth + multi-tenant data model** — Supabase migrations, RLS policies, tenant onboarding
-2. **Members CRUD**
-3. **Plans** (dynamic pricing)
-4. **Attendance** tracking
-5. **Payments** (Razorpay integration)
-6. **Staff** management
-7. **Communications** (Interakt/WhatsApp)
-8. **Dashboard** KPIs
-9. **Reports**
+### Up Next — P0 Build Order (from FEATURES.md)
+1. **P0.1** — Auth & Onboarding (signup, OTP, onboarding wizard, tenant creation)
+2. **P0.2** — Member Management (CRUD, guardian model, search/filter)
+3. **P0.3** — Session Management (create, assign members)
+4. **P0.4** — Attendance (THE ritual screen — must be excellent)
+5. **P0.5** — Fee Plans (CRUD)
+6. **P0.6** — Payments Manual (overdue list, record payment)
+7. **P0.7** — Dashboard (daily digest, coach view)
+8. **P0.8** — WhatsApp via Interakt (payment reminder, receipt, welcome)
+9. **P0.9** — Settings (business profile, terminology config)
+
+## Key Docs (read before each session)
+1. `CLAUDE.md` — this file. Project context + session log + status.
+2. `FEATURES.md` — full feature spec. Schema, API routes, acceptance criteria, rules.
+3. `docs/design/` — screen-by-screen UI specs. Reference the relevant file per feature.
 
 ## Design Reference
 All UI/UX specs live in `docs/design/`. Key decisions:
