@@ -1,127 +1,78 @@
-# Zenzo — CLAUDE.md
+# Zenzo — Agent Context
 
-## What is Zenzo?
+## What is Zenzo
+Membership management SaaS for recurring-attendance businesses (gyms first).
+Multi-tenant: each business gets a slug-scoped workspace (`/:tenantSlug/*`).
 
-Zenzo is a **membership management platform** for recurring-attendance businesses (gyms, yoga studios, martial arts academies, dance schools, etc.).
+## Stack
+Turborepo · Next.js 14 (App Router) · Supabase (Postgres + RLS) · Razorpay · Interakt (WhatsApp) · Vercel · pnpm workspaces
 
-- **Strategy**: Build horizontal, sell vertical — launch with gyms as the beachhead vertical.
-- **Model**: Multi-tenant SaaS — one codebase, each business gets its own slug-scoped workspace.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Monorepo | Turborepo (pnpm workspaces) |
-| Frontend | Next.js 14 (App Router) |
-| Database / Auth | Supabase (Postgres + Row-Level Security) |
-| Payments | Razorpay |
-| WhatsApp Notifications | Interakt |
-| Hosting | Vercel |
-
----
-
-## Repository Structure
-
+## Repo Layout
 ```
-zenzo/
-├── apps/
-│   └── web/                      # Next.js 14 app
-│       └── src/
-│           ├── app/
-│           │   ├── (auth)/       # Login, signup, forgot-password
-│           │   └── (dashboard)/
-│           │       └── [tenantSlug]/   # All tenant-scoped routes
-│           │           ├── dashboard/
-│           │           ├── members/
-│           │           ├── plans/
-│           │           ├── attendance/
-│           │           ├── payments/
-│           │           ├── staff/
-│           │           ├── communications/
-│           │           ├── reports/
-│           │           └── settings/
-│           └── middleware.ts     # Auth + tenant guard
-├── packages/
-│   ├── config/                   # Shared tsconfig, eslint
-│   ├── database/                 # Supabase client + generated types
-│   ├── ui/                       # Shared React components
-│   └── utils/                    # Formatters, slugify, etc.
-├── supabase/                     # Migrations + seed (add when initialising DB)
-├── .env.example
-├── turbo.json
-└── CLAUDE.md
+apps/web/src/
+  app/(auth)/login/           # auth routes
+  app/(dashboard)/[tenantSlug]/
+    dashboard/ members/ plans/ attendance/
+    payments/ staff/ communications/ reports/ settings/
+  middleware.ts               # Supabase auth + tenant guard
+packages/
+  database/  → Supabase client + DB types (packages/database/src/)
+  ui/        → shared React components
+  utils/     → formatCurrency(paise), formatDate, slugify
+  config/    → tsconfig base + nextjs
 ```
 
----
-
-## Phase 1 — 9 Modules
-
-| # | Module | Description |
-|---|---|---|
-| 1 | **Auth** | Multi-tenant auth via Supabase Auth (email + OTP) |
-| 2 | **Dashboard** | KPI summary: active members, revenue, attendance rate |
-| 3 | **Members** | Add/edit/view members, membership status, history |
-| 4 | **Plans** | Create dynamic pricing plans (duration + price) |
-| 5 | **Attendance** | Mark / view daily attendance per member |
-| 6 | **Payments** | Collect fees via Razorpay, track dues + history |
-| 7 | **Staff** | Invite staff, assign roles, manage access |
-| 8 | **Communications** | Send WhatsApp messages via Interakt (renewal reminders, etc.) |
-| 9 | **Reports** | Revenue, attendance, churn reports with date filters |
-| +  | **Settings** | Tenant profile, branding, billing |
-
----
-
-## User Roles
-
+## Roles
 | Role | Access |
 |---|---|
-| `owner` | Full access — all modules + settings |
-| `staff` | Members, attendance, payments (read/write). No settings or staff management. |
-| `member` | Own profile, own payment history, own attendance |
-
-Role is stored in `profiles.role` (per-tenant). Enforced via Supabase RLS **and** Next.js middleware.
-
----
-
-## Multi-Tenant Data Model (overview)
-
-- Every tenant gets a row in `tenants` with a unique `slug`.
-- All tenant-scoped tables carry `tenant_id` foreign key.
-- Supabase RLS policies enforce `tenant_id = auth.jwt() -> tenant_id` claim.
-- URL structure: `/:tenantSlug/members`, `/:tenantSlug/payments`, etc.
-
----
+| `owner` | all modules + settings |
+| `staff` | members, attendance, payments (no settings/staff mgmt) |
+| `member` | own profile, payments, attendance |
 
 ## Key Conventions
-
-- **Amounts stored in paise** (₹1 = 100 paise) — use `formatCurrency()` from `@zenzo/utils` for display.
-- **Dates** — store as UTC ISO strings in Supabase; display with `formatDate()`.
-- **Server Components by default** — only add `"use client"` when you need interactivity or browser APIs.
-- **Supabase types** — after every migration run `supabase gen types typescript --local > packages/database/src/types/index.ts`.
-- **Env vars** — see `.env.example`. Never commit `.env*` files.
+- Amounts in **paise** (₹1 = 100). Use `formatCurrency()` from `@zenzo/utils`.
+- Server Components by default — `"use client"` only when needed.
+- After every migration: `supabase gen types typescript --local > packages/database/src/types/index.ts`
+- Never commit `.env*` files. See `.env.example` for required vars.
 
 ---
 
-## Build Order (Phase 1)
+## Session Log
 
-1. Auth + multi-tenant data model (RLS, middleware, tenant onboarding)
-2. Members CRUD
-3. Plans (dynamic pricing)
-4. Attendance tracking
-5. Payments (Razorpay integration)
-6. Staff management
-7. Communications (Interakt)
-8. Dashboard KPIs
-9. Reports
+### Session 1 — 2026-03-23
+**Done:**
+- Turborepo monorepo scaffolded (pnpm workspaces)
+- Next.js 14 app with all 9 module routes under `/:tenantSlug/*`
+- Supabase auth middleware (`apps/web/src/middleware.ts`)
+- `@zenzo/database`: Supabase client + placeholder types (tenants, profiles, memberships)
+- `@zenzo/ui`: Button component
+- `@zenzo/utils`: formatCurrency, formatDate, slugify
+- `@zenzo/config`: shared tsconfig (base + nextjs)
+- `.env.example`, `.gitignore`, `README.md`
+- All code pushed to `claude/init-club-management-5zMXk`
 
 ---
 
-## Local Dev
+## Status
 
-```bash
-pnpm install
-cp .env.example .env.local   # fill in Supabase + Razorpay keys
-pnpm dev                      # starts all apps via Turbo
-```
+### Done
+- [x] Monorepo skeleton (Turborepo + pnpm)
+- [x] Next.js 14 app with 9 module route stubs
+- [x] Supabase client + placeholder DB types
+- [x] Auth middleware (route guard)
+- [x] Shared packages (ui, utils, config)
+- [x] README + CLAUDE.md
+
+### In Progress
+- nothing currently active
+
+### Up Next (Phase 1 build order)
+1. **Auth + multi-tenant data model** — Supabase migrations, RLS policies, tenant onboarding
+2. **Members CRUD**
+3. **Plans** (dynamic pricing)
+4. **Attendance** tracking
+5. **Payments** (Razorpay integration)
+6. **Staff** management
+7. **Communications** (Interakt/WhatsApp)
+8. **Dashboard** KPIs
+9. **Reports**
