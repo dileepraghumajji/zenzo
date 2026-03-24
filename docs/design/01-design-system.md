@@ -2,49 +2,52 @@
 
 ## Colour Palette
 
-### Brand
-```
-primary-50:  #FFF7ED   ← backgrounds, hover tints
-primary-100: #FFEDD5
-primary-200: #FED7AA
-primary-300: #FDBA74
-primary-400: #FB923C
-primary-500: #F97316   ← PRIMARY — warm orange, energy, action
-primary-600: #EA580C   ← hover/active state
-primary-700: #C2410C
-primary-800: #9A3412
-primary-900: #7C2D12
-```
-Why orange: Warm, energetic, approachable. Stands out against the sea of blue SaaS tools. Signals "this is different." Works well in Indian cultural context (auspicious, vibrant).
+> Full color system specification: `docs/design/18-zenzo-color-system.md`
+> This section is the reference summary. Read the full spec before building any component.
 
-### Neutrals (Slate)
+### Forge — Brand Orange
 ```
-neutral-0:   #FFFFFF
-neutral-50:  #F8FAFC
-neutral-100: #F1F5F9
-neutral-200: #E2E8F0
-neutral-300: #CBD5E1
-neutral-400: #94A3B8
-neutral-500: #64748B
-neutral-600: #475569
-neutral-700: #334155
-neutral-800: #1E293B
-neutral-900: #0F172A
+forge-50:  #FFF6EC   ← tints, subtle bg
+forge-100: #FFEBD3   ← chip/alert bg
+forge-200: #FDD1A3   ← disabled state
+forge-300: #FBAD65
+forge-400: #F88030
+forge-500: #EF6014   ← icons, active nav, progress, focus rings
+forge-600: #C84A08   ← PRIMARY BUTTON BG (white text: 4.73:1 ✓ WCAG AA)
+forge-700: #A13907   ← hover/pressed
+forge-800: #7D2C05
+forge-900: #5B2004
+```
+
+### Stone — Warm Neutral
+```
+stone-0:   #FFFFFF   ← page bg, card surface
+stone-50:  #FAF9F7   ← table headers, subtle bg
+stone-100: #F4F3F0   ← hover bg, disabled input
+stone-200: #E9E7E3   ← borders, dividers
+stone-300: #D4D0CA   ← strong borders
+stone-400: #A8A39A   ← placeholder text (never real content text)
+stone-500: #78746C   ← secondary text (4.67:1 ✓)
+stone-600: #5A5650   ← labels, meta (6.72:1 ✓)
+stone-700: #3C3935   ← body text (10.2:1 ✓)
+stone-800: #252320   ← headings (14.1:1 ✓)
+stone-900: #151310   ← max contrast
 ```
 
 ### Semantic
 ```
-success-50:  #F0FDF4   success-500: #22C55E   success-700: #15803D
-warning-50:  #FFFBEB   warning-500: #F59E0B   warning-700: #B45309
-error-50:    #FEF2F2   error-500:   #EF4444   error-700:   #B91C1C
-info-50:     #EFF6FF   info-500:    #3B82F6   info-700:    #1D4ED8
+jade-50: #F0FDF5   jade-500: #16A34A   jade-700: #15803D    ← success / present
+sand-50: #FFFBEB   sand-500: #D97706   sand-700: #B45309    ← warning / expiring
+flame-50:#FFF1F2   flame-500:#DC2626   flame-700:#B91C1C    ← error / absent / overdue
+sky-50:  #EFF9FF   sky-500:  #0284C7   sky-700:  #0369A1    ← info / neutral notice
 ```
 
-### Usage Rules
-- Primary orange: CTAs, active nav items, progress indicators, links
-- Neutrals: Text (900, 700), borders (200), backgrounds (50, 100), placeholders (400)
-- Semantic: Status badges, alerts, form validation — never for decoration
-- Text on white bg: neutral-900 (headings), neutral-700 (body), neutral-500 (secondary)
+### Core Usage Rules
+- **Forge-500** for accents (icons, active states, focus rings) — NOT for white text at body size
+- **Forge-600** for all interactive elements (buttons, links) — white text passes WCAG AA
+- **Stone-500 minimum** for any readable text — stone-400 is placeholder/decorative only
+- **Semantic -700** for text in badges/alerts. **Semantic -50** for badge/alert backgrounds.
+- **Color alone never communicates status** — always pair with an icon
 
 ---
 
