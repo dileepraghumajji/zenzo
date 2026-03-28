@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./src/**/*.{ts,tsx}",
     "../../packages/ui/src/**/*.{ts,tsx}",
@@ -44,8 +45,9 @@ const config: Config = {
         // Surfaces
         background: "var(--surface-page)",
         surface: {
-          subtle: "var(--surface-subtle)",
-          brand:  "var(--surface-brand)",
+          subtle: "var(--surface-subtle)",   // stone-50 — sidebars, table headers, page bg on auth
+          raised: "var(--surface-raised)",   // stone-0 light / dark-card dark — cards elevated above page
+          brand:  "var(--surface-brand)",    // forge-50 — brand-tinted areas
         },
 
         // Text
@@ -57,7 +59,10 @@ const config: Config = {
         brand:       "var(--text-brand)",
 
         // Borders & rings
-        border: "var(--border-default)",
+        border: {
+          DEFAULT: "var(--border-default)",   // stone-200 — default borders
+          strong:  "var(--border-strong)",    // stone-300 — hover state, stronger dividers
+        },
         ring:   "var(--border-focus)",
 
         // Interactive — primary (Forge orange)

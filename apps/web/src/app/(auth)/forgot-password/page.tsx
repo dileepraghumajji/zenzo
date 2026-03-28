@@ -84,15 +84,20 @@ export default function ForgotPasswordPage() {
   // ── Success state ────────────────────────────────────────────────────────────
   if (sent) {
     return (
-      <div className="min-h-screen bg-surface-subtle flex items-center justify-center p-4">
-        <div className="w-full max-w-[420px]">
+      <div className="relative min-h-screen bg-surface-subtle flex items-center justify-center p-6 overflow-hidden">
+        <div
+          className="pointer-events-none absolute -top-48 -right-32 h-[640px] w-[640px] rounded-full hidden lg:block"
+          style={{ background: "var(--auth-glow)" }}
+          aria-hidden="true"
+        />
+        <div className="relative w-full max-w-[420px]">
 
           {/* Wordmark */}
           <div className="text-center mb-8">
             <span className="text-[26px] font-bold tracking-tight text-brand">zenzo</span>
           </div>
 
-          <div className="bg-background rounded-xl border border-border shadow-md px-8 py-10 text-center space-y-5">
+          <div className="bg-surface-raised rounded-xl border border-border px-8 py-10 text-center space-y-5">
 
             {/* Icon */}
             <div
@@ -104,7 +109,7 @@ export default function ForgotPasswordPage() {
 
             {/* Copy */}
             <div className="space-y-2">
-              <h1 className="text-h2 text-heading font-bold">Check your email</h1>
+              <h1 className="text-h2 text-heading">Check your email</h1>
               <p className="text-body text-muted leading-6">
                 We sent a password reset link to{" "}
                 <span className="text-foreground font-medium">{maskEmail(email)}</span>.
@@ -153,19 +158,24 @@ export default function ForgotPasswordPage() {
 
   // ── Form state ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-surface-subtle flex items-center justify-center p-4">
-      <div className="w-full max-w-[420px]">
+    <div className="relative min-h-screen bg-surface-subtle flex items-center justify-center p-6 overflow-hidden">
+      <div
+        className="pointer-events-none absolute -top-48 -right-32 h-[640px] w-[640px] rounded-full hidden lg:block"
+        style={{ background: "var(--auth-glow)" }}
+        aria-hidden="true"
+      />
+      <div className="relative w-full max-w-[420px]">
 
         {/* Wordmark */}
         <div className="text-center mb-8">
           <span className="text-[26px] font-bold tracking-tight text-brand">zenzo</span>
         </div>
 
-        <div className="bg-background rounded-xl border border-border shadow-md px-8 py-8">
+        <div className="bg-surface-raised rounded-xl border border-border px-8 py-8">
 
           {/* Heading */}
           <div className="mb-6">
-            <h1 className="text-h1 text-heading font-bold">Reset your password</h1>
+            <h1 className="text-display text-heading">Reset your password</h1>
             <p className="mt-1.5 text-body text-muted">
               Enter your email and we&apos;ll send you a link to get back in.
             </p>

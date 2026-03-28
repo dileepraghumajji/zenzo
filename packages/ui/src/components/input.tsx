@@ -10,7 +10,7 @@ import { cn } from "../lib/cn";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "prefix"> {
   /**
    * Left-side decoration — icon or static text (e.g. <Mail />, "+91").
    * Always non-interactive (pointer-events-none). For interactive left
@@ -53,8 +53,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           disabled={disabled}
           className={cn(
-            // Base layout
-            "w-full h-10 rounded-md bg-background",
+            // Base layout — 48px on mobile (touch targets), 40px on md+ (density)
+            "w-full h-12 md:h-10 rounded-md bg-background",
             // Typography
             "text-body text-foreground placeholder:text-placeholder",
             // Border + transition
@@ -67,9 +67,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             hasPrefix ? "pl-10" : "pl-3",
             hasSuffix ? "pr-10" : "pr-3",
             // State: error vs normal
+            // Normal: hover shows stone-300 border; focus shows forge-500 ring + stone-300 border
             error
               ? "border-error-accent focus-visible:ring-error-accent"
-              : "border-border focus-visible:ring-ring focus-visible:border-ring"
+              : "border-border hover:border-border-strong focus-visible:ring-ring focus-visible:border-border-strong"
           )}
           {...props}
         />

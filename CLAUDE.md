@@ -1,10 +1,36 @@
 # Zenzo — Agent Context
 
+## CRITICAL RULES (read every session)
+
+1. **No shadow users** — every member must have a Zenzo account. Clubs INVITE people via WhatsApp. Membership activates only after the person signs up on Zenzo. `club_memberships.status = 'pending_invite'` until then.
+2. **No `any`, no `as unknown as`** — ever. Fix the root cause if a type isn't resolving.
+3. **No `as X` casts** unless narrowing after an explicit type guard.
+4. **Explicit column selects** on all Supabase queries — `select("id, role, full_name")` not `select("*")`. `select("*")` only works after running `supabase gen types typescript --local`.
+5. **Create the Supabase client directly** inside every function. Never pass it through helpers — the `SupabaseClient<Database>` generic collapses and query results become `never`.
+6. **Use `getUser()` not `getSession()`** — `getUser()` validates the JWT against Supabase. `getSession()` trusts the local cookie without re-validation.
+7. **Server Components are read-only** — `CookieMethodsServer` implements only `getAll()`, never `setAll`. Token refresh is middleware's job.
+8. **All DB enum values in `packages/database/src/enums.ts`** — never hard-code `"owner"` or `"coach"` in component code. Import from `@zenzo/database/enums`.
+9. **Loading states use skeletons, never spinners** — skeleton variants live alongside their component. Use `.skeleton-shimmer` from `globals.css`.
+10. **Server Components by default** — add `"use client"` only for: `useState`, `useEffect`, event handlers, browser APIs, or localStorage.
+11. **All amounts in paise** — ₹1 = 100 paise. Always use `formatCurrency()` from `@zenzo/utils` for display.
+12. **Use `clubSlug` everywhere** — not `tenantSlug`. The route param is `[clubSlug]`.
+13. **After completing any task, update the Session Log in CLAUDE.md.**
+
+---
+
 ## What is Zenzo
-Membership management SaaS for recurring-attendance businesses (gyms first).
-Multi-tenant: each business gets a slug-scoped workspace (`/:tenantSlug/*`).
+
+A two-sided platform for recurring-attendance clubs — gyms, martial arts, dance, yoga.
+
+- **B2B (Phase 1):** Club owners and coaches use Zenzo to manage operations — members, batches, attendance, payments.
+- **B2C (Phase 2):** Consumers discover, trial, and enroll in clubs through Zenzo.
+
+Every person on Zenzo is a real, authenticated user with one account that works across all clubs.
+
+---
 
 ## Stack
+
 Turborepo · Next.js 14 (App Router) · Supabase (Postgres + RLS) · Razorpay · Interakt (WhatsApp) · Vercel · pnpm workspaces
 
 ## Package Versions (pinned — do not upgrade without testing)
@@ -12,76 +38,99 @@ Turborepo · Next.js 14 (App Router) · Supabase (Postgres + RLS) · Razorpay ·
 - `@supabase/supabase-js`: `2.100.0`
 - Next.js: `14.x`
 
+---
+
 ## Repo Layout
+
 ```
 apps/web/src/
-  app/(auth)/login/           # auth routes
-  app/(dashboard)/[tenantSlug]/
-    dashboard/ members/ plans/ attendance/
-    payments/ staff/ communications/ reports/ settings/
+  app/(auth)/
+    login/page.tsx
+    signup/page.tsx
+    forgot-password/page.tsx
+  app/(dashboard)/[clubSlug]/    ← TARGET: currently at [tenantSlug] — see Tech Debt
+    dashboard/page.tsx
+    members/
+      page.tsx                   # Member list
+      invite/page.tsx            # Invite member
+      [memberId]/page.tsx        # Member profile
+    batches/
+      page.tsx
+      new/page.tsx
+      [batchId]/page.tsx
+    attendance/
+      take/[batchId]/page.tsx
+      history/page.tsx
+    payments/
+      page.tsx                   # Overdue list (default tab)
+      record/page.tsx
+      history/page.tsx
+    reports/page.tsx
+    settings/
+      page.tsx
+      staff/page.tsx
+    layout.tsx                   # Async SC: single profile fetch, role guard
+  app/api/
+    auth/profile/route.ts        # POST → returns {clubSlug, role} after login
+    onboarding/route.ts
   components/
-    sidebar.tsx               # desktop sidebar + SidebarSkeleton
-    bottom-nav.tsx            # mobile bottom nav + MoreSheet
+    sidebar.tsx                  # Desktop sidebar + SidebarSkeleton
+    bottom-nav.tsx               # Mobile bottom nav + MoreSheet
   lib/
-    auth.ts                   # getUserProfile() — ONE profile fetch per navigation
+    auth.ts                      # getUserProfile(clubSlug) — ONE profile fetch per nav
     supabase/
-      server.ts               # SSR Supabase client (Server Components)
-      client.ts               # Browser Supabase client (Client Components)
-  middleware.ts               # Edge: session JWT check only, NO DB queries
-  app/api/auth/profile/route.ts  # POST → returns {tenantSlug, role} after login
+      server.ts                  # SSR Supabase client (Server Components)
+      client.ts                  # Browser Supabase client (Client Components)
+  middleware.ts                  # Edge: JWT check only, NO DB queries
 packages/
   database/src/
-    enums.ts                  # SINGLE SOURCE OF TRUTH for all DB enum values
-    types/index.ts            # Hand-written DB types (replace after supabase gen)
-    client.ts                 # Supabase service client
-    index.ts                  # Re-exports everything
-  ui/        → shared React components
+    enums.ts                     # SINGLE SOURCE OF TRUTH for all DB enum values
+    types/index.ts               # Hand-written DB types (replace after supabase gen)
+    client.ts                    # Supabase service client
+    index.ts                     # Re-exports everything
+  ui/        → shared React components (Button, Input, etc.)
   utils/     → formatCurrency(paise), formatDate, slugify
   config/    → tsconfig base + nextjs
 ```
 
+---
+
 ## Roles
-| Role | Access |
-|---|---|
-| `owner` | all modules + settings |
-| `staff` | members, attendance, payments (no settings/staff mgmt) |
-| `member` | own profile, payments, attendance (member portal only, not dashboard) |
+
+| Role | Product | Access |
+|---|---|---|
+| `owner` | Club dashboard | Full management + settings + reports + staff |
+| `coach` | Club dashboard | Attendance, members (read-only), progression. No financials, no settings. |
+| `consumer` | Consumer app (Phase 2) | Discovery, enrollment, own profile |
+| `admin` | Zenzo internal panel | Club verification, platform management |
+
+Roles are stored in `club_staff.role`. The same Zenzo user can be owner of Club A and coach at Club B.
 
 ---
 
 ## Non-Negotiable Coding Rules
 
 ### TypeScript
-1. **No `any`, no `as unknown as`** — ever. If a type isn't resolving, fix the root cause.
-2. **No `as X` casts** unless narrowing after an explicit guard (e.g., `if (role === "member") ...` then `role as "owner" | "staff"`).
-3. **Explicit column selects on all Supabase queries** — `select("id, role, full_name")` not `select("*")`. `select("*")` only works after running `supabase gen types typescript --local`.
+```ts
+// CORRECT — create client directly in the function
+const supabase = createSupabaseServerClient();
+const { data } = await supabase.from("clubs").select("id, name, slug");
 
-### Supabase Query Rules
-4. **Create the Supabase client directly** inside every function that runs queries. Do not pass it through helpers or destructure from a helper — TypeScript collapses the `SupabaseClient<Database>` generic and query results become `never`.
-   ```ts
-   // CORRECT
-   const supabase = createSupabaseServerClient();
-   const { data } = await supabase.from("profiles").select(...);
+// WRONG — generic is lost, data becomes `never`
+const { supabase } = await someHelper();
+const { data } = await supabase.from("clubs").select("id, name, slug");
+```
 
-   // WRONG — generic is lost
-   const { supabase } = await someHelper();
-   const { data } = await supabase.from("profiles").select(...); // data: never
-   ```
-5. **Use `getUser()` not `getSession()`** — `getUser()` validates the JWT against the Supabase auth server. `getSession()` trusts the local cookie without re-validation.
-6. **Server components are read-only** — `CookieMethodsServer` must only implement `getAll()`, never `setAll`. Token refresh is done by middleware, not server components.
+### Enums pattern
+```ts
+// packages/database/src/enums.ts
+export const StaffRole = { Owner: "owner", Coach: "coach" } as const;
+export type StaffRole = (typeof StaffRole)[keyof typeof StaffRole];
+```
 
-### Enums
-7. **All DB enum values live in `packages/database/src/enums.ts`** — never hard-code string literals like `"owner"` in component code. Always import from `@zenzo/database/enums`.
-   ```ts
-   // enums.ts pattern
-   export const UserRole = { Owner: "owner", Staff: "staff", Member: "member" } as const;
-   export type UserRole = (typeof UserRole)[keyof typeof UserRole];
-   ```
-
-### Components
-8. **Loading states use skeletons, never spinners** — all skeleton variants live alongside their component (`SidebarSkeleton` in `sidebar.tsx`). Use `.skeleton-shimmer` CSS class from `globals.css`.
-9. **Server Components by default** — add `"use client"` only when you need: `useState`, `useEffect`, event handlers, browser APIs, or localStorage.
-10. **Amounts in paise** — ₹1 = 100 paise. Always use `formatCurrency()` from `@zenzo/utils` for display.
+### Component rules
+- Skeleton variants live alongside their component (`SidebarSkeleton` in `sidebar.tsx`)
+- All monetary amounts: `formatCurrency(amountPaise)` — never `₹${amount}`
 
 ---
 
@@ -90,48 +139,77 @@ packages/
 ```
 Layer 1: Middleware (Edge Runtime)
   └── Checks session JWT via getUser()
-  └── Redirects unauthenticated users to /login?redirect={pathname}
-  └── NO DB queries — Edge Runtime has no DB access
+  └── Redirects unauthenticated → /login?redirect={pathname}
+  └── NO DB queries
 
-Layer 2: [tenantSlug]/layout.tsx (async Server Component)
-  └── Calls getUserProfile(tenantSlug) — ONE DB fetch per navigation
-  └── Verifies: session exists + profile exists + tenant slug matches
+Layer 2: [clubSlug]/layout.tsx (async Server Component)
+  └── Calls getUserProfile(clubSlug) — ONE DB fetch per navigation
+  └── Verifies: session + club_staff membership + slug matches
   └── Redirects to /login on any failure
-  └── Guards member role → redirect /m (members use portal, not dashboard)
+  └── Guards consumer/no-role → redirect appropriately
   └── Passes {role, fullName, initials} as props to Sidebar + BottomNav
 
 Layer 3: Pages (Server Components / Client Components)
   └── Receive role as props from layout (never fetch profile themselves)
-  └── Fetch their OWN data (members list, payments, etc.)
-  └── Use Suspense + Skeleton for their own slow data
+  └── Fetch their OWN data (member list, payments, etc.)
+  └── Use Suspense + skeleton for slow data
 ```
 
-**Post-login redirect flow:**
-1. Login page verifies OTP with Supabase
-2. Login page calls `POST /api/auth/profile` — gets `{ tenantSlug, role }`
-3. Login page calls `router.push("/${tenantSlug}/dashboard")`
-4. Middleware lets the request through (session now valid)
+**Post-login flow:**
+1. Login verifies credentials with Supabase
+2. Login calls `POST /api/auth/profile` → gets `{ clubSlug, role }`
+3. Login calls `router.push("/${clubSlug}/dashboard")`
+4. Middleware lets the request through (valid session)
 5. Layout fetches profile and renders
-
-**Re-trigger profile fetch:**
-- Automatic: every navigation (Next.js App Router re-runs layouts)
-- Manual: call `router.refresh()` after a role change (owner promotes staff)
 
 ---
 
 ## Auth Strategy
 
-### Current (Phase 1 — Launch)
+### Phase 1 (Current)
 **Email + Password** via `supabase.auth.signInWithPassword` / `supabase.auth.signUp`.
-- Phone collected at signup → stored in `profiles.phone` → used by Interakt for WhatsApp only
-- Phone is NOT an auth credential
-- Password reset via email (Supabase native)
 
-### Future Providers (planned — do NOT build yet)
-- **Phone OTP login** — user requested; adds "Login with OTP" button to login page
-- **Google OAuth** — user requested; adds "Continue with Google" button
+**Signup flow:**
+1. Full Name + Phone + Email + Password → submit
+2. WhatsApp OTP sent via Interakt to phone number
+3. User enters 6-digit OTP in modal
+4. On success: Supabase account + `users` row created
+5. Post-signup routing: invited? → create membership + portal. Owner? → onboarding wizard.
 
-**Design constraint:** Build the login page provider-agnostic so adding phone/Google later is additive (new button), not a rewrite. The `POST /api/auth/profile` route already handles post-login redirect for any provider.
+**Phone is NOT an auth credential.** It's collected at signup, stored in `users.phone`, used for WhatsApp only.
+
+### Future (do NOT build yet)
+- Phone OTP login — additive button on login page
+- Google Sign-In — consumer app, Phase 2
+
+---
+
+## Data Model
+
+```
+users                   — Zenzo account (id, name, phone, email, auth_provider, is_admin)
+clubs                   — each club (id, slug, name, business_type, owner_id, verification_status, listed)
+club_staff              — role in a club (user_id, club_id, role: owner|coach)
+club_memberships        — member relationship (user_id, club_id, plan_id, status, joined_at)
+member_batches          — many-to-many (membership_id, batch_id)
+batches                 — scheduling groups (id, club_id, name, start_time, end_time, days[], coach_id)
+fee_plans               — billing plans (id, club_id, name, amount_paise, billing_cycle)
+attendance_records      — (id, membership_id, batch_id, date, status, marked_by, is_drop_in)
+payments                — (id, membership_id, amount_paise, method, payment_date, recorded_by)
+progression_levels      — belt/level hierarchy per club
+promotions              — promotion history per membership
+notifications_log       — WhatsApp/email/push delivery log
+notification_settings   — per-club toggle for each notification type
+```
+
+**Membership status lifecycle:**
+```
+pending_invite → active → overdue → expired
+                    ↑                   │
+                    └───────────────────┘ (payment recorded)
+```
+
+**Multi-club:** One owner can own multiple clubs. Coaches can be shared across clubs owned by the same owner. Club switcher lives in sidebar footer.
 
 ---
 
@@ -139,157 +217,114 @@ Layer 3: Pages (Server Components / Client Components)
 
 | File | Purpose |
 |---|---|
-| `apps/web/src/lib/auth.ts` | `getUserProfile(tenantSlug)` — the ONE profile fetch |
+| `apps/web/src/lib/auth.ts` | `getUserProfile(clubSlug)` — the ONE profile fetch |
 | `apps/web/src/lib/supabase/server.ts` | SSR Supabase client factory |
 | `apps/web/src/middleware.ts` | Edge session guard |
-| `apps/web/src/app/api/auth/profile/route.ts` | POST — returns tenantSlug after login |
+| `apps/web/src/app/api/auth/profile/route.ts` | POST — returns clubSlug + role after login |
 | `apps/web/src/components/sidebar.tsx` | Desktop sidebar + `SidebarSkeleton` |
 | `apps/web/src/components/bottom-nav.tsx` | Mobile bottom nav + `MoreSheet` |
-| `apps/web/src/app/(dashboard)/[tenantSlug]/layout.tsx` | Async layout — single profile fetch |
+| `apps/web/src/app/(dashboard)/[tenantSlug]/layout.tsx` | Async layout (needs rename to [clubSlug]) |
 | `packages/database/src/enums.ts` | All DB enum values (single source of truth) |
-| `packages/database/src/types/index.ts` | Hand-written DB types (replace after migrations) |
+| `packages/database/src/types/index.ts` | Hand-written DB types |
+
+---
+
+## Tech Debt / Refactoring Required
+
+These files are built but use the old naming. They work but MUST be refactored before shipping:
+
+| File | Issue | Action |
+|---|---|---|
+| `app/(dashboard)/[tenantSlug]/layout.tsx` | Wrong route param name | Move to `[clubSlug]/layout.tsx` |
+| `apps/web/src/middleware.ts` | References `tenantSlug` variable names | Rename variables to `clubSlug` |
+| `apps/web/src/lib/auth.ts` | `getUserProfile()` queries old `profiles` + `tenants` tables | Rewrite to use `users` + `clubs` + `club_staff` |
+| `apps/web/src/app/api/auth/profile/route.ts` | Queries old schema, returns `tenantSlug` | Rewrite to use new schema, return `clubSlug` |
+| `apps/web/src/components/sidebar.tsx` | Uses `staff` role, references `tenantSlug` | Update to `coach` role, `clubSlug` |
+| `apps/web/src/components/bottom-nav.tsx` | Uses `staff` role | Update to `coach` role |
+| `packages/database/src/enums.ts` | Has old enum values (MemberStatus, SessionType, TenantPlan) | Replace with new enums (see FEATURES.md) |
+| `packages/database/src/types/index.ts` | Has old table types (tenants, profiles, members, sessions) | Replace with new table types (users, clubs, club_staff, club_memberships, batches, etc.) |
+| `app/(auth)/signup/page.tsx` | No WhatsApp OTP phone verification step | Add OTP modal after form submit |
+| `app/(auth)/login/page.tsx` | No post-login club-switcher for multi-club owners | Add club selection when user owns 2+ clubs |
 
 ---
 
 ## Session Log
 
 ### Session 1 — 2026-03-23
-**Done:**
-- Turborepo monorepo scaffolded (pnpm workspaces)
-- Next.js 14 app with all 9 module routes under `/:tenantSlug/*`
-- Supabase auth middleware (`apps/web/src/middleware.ts`)
-- `@zenzo/database`: Supabase client + placeholder types (tenants, profiles, memberships)
-- `@zenzo/ui`: Button component
-- `@zenzo/utils`: formatCurrency, formatDate, slugify
-- `@zenzo/config`: shared tsconfig (base + nextjs)
-- `.env.example`, `.gitignore`, `README.md`
+Turborepo monorepo scaffolded. Next.js 14 app with 9 module route stubs under `/:tenantSlug/*`. Supabase auth middleware, `@zenzo/database`, `@zenzo/ui`, `@zenzo/utils`, `@zenzo/config`. `.env.example`, `.gitignore`, `README.md`.
 
 ### Session 2 — 2026-03-23
-**Done:**
-- Complete UI/UX design system for the entire product
-- All design docs in `docs/design/` (17 files):
-  - `00-design-philosophy.md` — one-pager: visual identity, the three tests
-  - `01-design-system.md` — colours (warm orange primary), typography (Inter), spacing (4px base), borders, shadows, component inventory
-  - `02-navigation-ia.md` — full site map, sidebar/bottom nav, role-based nav, transitions
-  - `03-user-journeys.md` — 5 end-to-end journeys (onboarding, coach attendance, fee collection, member self-service, belt promotion)
-  - `04-screens-auth.md` — landing, signup, login, forgot password, onboarding wizard
-  - `05-screens-dashboard.md` — owner daily digest, coach today's batches
-  - `06-screens-members.md` — list, add, profile, bulk import
-  - `07-screens-batches.md` — list, create, detail
-  - `08-screens-attendance.md` — THE ritual screen, history (owner view)
-  - `09-screens-payments.md` — overdue list, record payment, history, fee plans, send link
-  - `10-screens-reports.md` — revenue, attendance, member growth, retention
-  - `11-screens-progression.md` — belt distribution, promote, history
-  - `12-screens-settings.md` — profile, staff mgmt, notifications, gateway, terminology
-  - `13-screens-communications.md` — WhatsApp hub, templates, history, manual send
-  - `14-screens-member-portal.md` — member home, attendance, payments, receipts (token-gated mobile web)
-  - `15-components.md` — detailed specs: Button, Input, Badge, Avatar, StatCard, DataTable, Modal, Toast, EmptyState, AttendanceToggle
-  - `16-micro-interactions-responsive.md` — motion guidelines, breakpoints, responsive rules, performance budget
+Complete UI/UX design system in `docs/design/` (17 files).
 
 ### Session 3 — 2026-03-23
-**Done:**
-- Reviewed `temp-features.md` as CEO/CTO — identified gaps in schema, RLS, API routes, guardian model, acceptance criteria
-- Produced `FEATURES.md` (1,415 lines) — production-grade feature spec:
-  - 13-table database schema with full SQL + RLS policies + migration order
-  - P0 features (9 sections) with acceptance criteria, validation rules, API routes
-  - P1 features (9 sections) with Razorpay integration, member portal token spec, guardian model
-  - P2 features (7 sections) scoped for post-launch growth
-  - Complete API route map (all Next.js route handlers)
-  - Implementation rules for coding agents (10 non-negotiable rules)
+`FEATURES.md` (1,415 lines) — production-grade feature spec with 13-table schema, RLS policies, P0–P2 features, API route map.
 
 ### Session 4 — 2026-03-24
-**Done:**
-- Built `packages/database/src/enums.ts` — single source of truth for all DB enum values (`UserRole`, `MemberStatus`, `AttendanceStatus`, `SessionType`, `DayOfWeek`, `TenantPlan`). Uses `as const` + type alias pattern.
-- Updated `packages/database/src/types/index.ts` — added `Relationships: GenericRelationship[]` to all tables (required by supabase-js v2.99+), expanded to 6 main tables (tenants, profiles, members, sessions, attendance, payments)
-- Updated `packages/database/src/index.ts` and `package.json` — exports all enums via `"./enums"` path
-- Upgraded `@supabase/ssr` to `0.9.0` and `@supabase/supabase-js` to `2.100.0` (v0.4.1 imported a path that no longer exists in supabase-js v2.99+)
-- Built `apps/web/src/lib/supabase/server.ts` — SSR Supabase client with `<Database>` generic, explicit `CookieMethodsServer` type to force non-deprecated overload
-- Built `apps/web/src/lib/auth.ts` — `getUserProfile(tenantSlug)`, the single profile fetch for dashboard scope. Zero `any`, zero `as unknown as`.
-- Rewrote `apps/web/src/middleware.ts` — Edge Runtime, JWT-only check, no DB queries, preserves redirect destination
-- Built `apps/web/src/app/api/auth/profile/route.ts` — `POST /api/auth/profile` for post-login redirect
-- Built `apps/web/src/components/sidebar.tsx` — desktop sidebar (hidden on mobile), role-based nav, collapse with localStorage persistence, active pill indicator, `SidebarSkeleton`
-- Built `apps/web/src/components/bottom-nav.tsx` — mobile bottom nav, 4 primary items + More sheet, safe area padding, closes on route change
-- Rewrote `apps/web/src/app/(dashboard)/[tenantSlug]/layout.tsx` — async Server Component, single profile fetch, guards member role, passes props to Sidebar + BottomNav
+Built: `packages/database/src/enums.ts`, `packages/database/src/types/index.ts`, `apps/web/src/lib/supabase/server.ts`, `apps/web/src/lib/auth.ts`, `apps/web/src/middleware.ts`, `apps/web/src/app/api/auth/profile/route.ts`, `apps/web/src/components/sidebar.tsx`, `apps/web/src/components/bottom-nav.tsx`, `apps/web/src/app/(dashboard)/[tenantSlug]/layout.tsx`.
 
-**Key decisions made this session:**
-- Single profile fetch in layout (not separate fetches for Sidebar + BottomNav)
-- Middleware stays pure Edge — no DB, just JWT check
-- `POST /api/auth/profile` route bridges login → dashboard (middleware can't do DB lookups)
-- Active nav indicator is an absolutely-positioned 3px pill (not border-left, which causes layout shift)
-- Sidebar collapse is CSS `transition-[width]` on a flex item — no context or CSS vars needed
+Key fixes: upgraded `@supabase/ssr` to 0.9.0 + `@supabase/supabase-js` to 2.100.0. Fixed `data: never` bug (create client directly). Added `Relationships: []` to hand-written types.
 
-**Bugs fixed this session:**
-- `@supabase/ssr@0.4.1` breaking with supabase-js v2.99+ (wrong dist path) → upgraded both packages
-- Supabase query `data: never` when client passed through helper functions → create client directly inside each function
-- `select("*")` returning `{}` type with placeholder types → use explicit column lists
-- Deprecated overload warning on `createServerClient` → explicit `CookieMethodsServer` type annotation
-- `Relationships` missing from hand-written types → added `Relationships: []` arrays
+### Session 5 — 2026-03-28
+Rewrote `CLAUDE.md`, `FEATURES.md`, and created `docs/dev/conventions.md` to reflect new product philosophy (two-sided platform, no shadow users, `clubSlug` naming, `coach` role, new data model).
 
 ---
 
 ## Status
 
-### Done
-- [x] Monorepo skeleton (Turborepo + pnpm)
-- [x] Next.js 14 app with 9 module route stubs
-- [x] Supabase client + placeholder DB types (with Relationships field)
-- [x] Auth middleware (Edge, JWT-only)
-- [x] Shared packages (ui, utils, config)
-- [x] README + CLAUDE.md
-- [x] Complete UI/UX design system (`docs/design/`)
-- [x] Production-grade feature spec (`FEATURES.md`)
-- [x] DB enums (single source of truth in `packages/database/src/enums.ts`)
-- [x] SSR Supabase client (`lib/supabase/server.ts`)
-- [x] Auth utility — `getUserProfile()` (`lib/auth.ts`)
-- [x] POST /api/auth/profile route
-- [x] Sidebar (desktop, collapsible, role-based, skeleton)
-- [x] BottomNav (mobile, 4 items + More sheet)
-- [x] Tenant layout (async, single profile fetch, role guard)
+### Built (needs refactoring to new model)
+- [~] Monorepo skeleton (Turborepo + pnpm) — correct
+- [~] Auth middleware — logic correct, variable names use old `tenantSlug`
+- [~] SSR Supabase client (`lib/supabase/server.ts`) — correct, keep
+- [~] Auth utility `getUserProfile()` — queries old schema, needs rewrite
+- [~] POST /api/auth/profile — queries old schema, needs rewrite
+- [~] Sidebar — logic correct, wrong role name (`staff` → `coach`), wrong param (`tenantSlug` → `clubSlug`)
+- [~] BottomNav — same as sidebar
+- [~] Dashboard layout `[tenantSlug]/layout.tsx` — needs rename + new schema
+- [~] DB enums — old values, needs new enum additions
+- [~] DB types — old table structure, needs complete replacement
+- [~] Auth pages (login, signup, forgot-password) — signup missing WhatsApp OTP step
 
-### Up Next — UI Components (build before P0.1 auth screens)
-- [ ] **Task 10:** TopBar — breadcrumb, search trigger, avatar dropdown, mobile back arrow
-- [ ] **Task 11:** Input component — all types, prefix/suffix, all states
-- [ ] **Task 12:** Select component — searchable, custom desktop dropdown
-- [ ] **Task 13:** Checkbox, Toggle, Radio atoms
-- [ ] **Task 14:** FormField wrapper
-- [ ] **Task 15:** Toast system — ToastProvider + useToast hook
-- [ ] **Task 16:** Modal / BottomSheet — responsive single component (replaces MoreSheet in bottom-nav)
-- [ ] **Task 17:** ConfirmDialog
-- [ ] **Task 18:** StatCard
-- [ ] **Task 19:** ListItem
-- [ ] **Task 20:** DataTable (desktop table → mobile card transformation)
-- [ ] **Task 21:** EmptyState
-- [ ] **Task 22:** Skeleton system (base + variants)
-- [ ] **Task 23:** PageHeader
-- [ ] **Task 24:** AttendanceGrid (hero component)
+### Up Next (Refactor Sprint)
+1. Replace `packages/database/src/enums.ts` with new enum values
+2. Replace `packages/database/src/types/index.ts` with new table types
+3. Rename `[tenantSlug]` → `[clubSlug]` route folder
+4. Rewrite `lib/auth.ts` to use `clubs` + `club_staff` tables
+5. Rewrite `api/auth/profile/route.ts` to return `clubSlug`
+6. Update `sidebar.tsx` + `bottom-nav.tsx` role names + param names
+7. Add WhatsApp OTP verification step to signup page
 
-### P0 Build Order (from FEATURES.md)
-1. **P0.1** — Auth & Onboarding (login OTP flow → `POST /api/auth/profile` → redirect, onboarding wizard, tenant creation)
-2. **P0.2** — Member Management (CRUD, guardian model, search/filter)
-3. **P0.3** — Session Management (create, assign members)
-4. **P0.4** — Attendance (THE ritual screen — must be excellent)
-5. **P0.5** — Fee Plans (CRUD)
-6. **P0.6** — Payments Manual (overdue list, record payment)
-7. **P0.7** — Dashboard (daily digest, coach view)
-8. **P0.8** — WhatsApp via Interakt (payment reminder, receipt, welcome)
-9. **P0.9** — Settings (business profile, terminology config)
+### P0 Build Order (after refactor)
+1. **P0.1** — Auth + Club Onboarding wizard (5-step)
+2. **P0.2** — Member Management (invite-only, WhatsApp invite, status lifecycle)
+3. **P0.3** — Batch Management (create, assign, many-to-many)
+4. **P0.4** — Attendance (THE ritual screen, offline IndexedDB queue)
+5. **P0.5** — Fee Plans CRUD
+6. **P0.6** — Payments Manual (record, overdue list, history)
+7. **P0.7** — Dashboard (owner digest, coach view)
+8. **P0.8** — WhatsApp via Interakt (invite, welcome, receipt, reminder)
+9. **P0.9** — Settings (business profile, terminology, notifications, Razorpay)
 
 ---
 
 ## Key Docs (read before each session)
-1. `CLAUDE.md` — this file. Project context + session log + status + rules.
-2. `FEATURES.md` — full feature spec. Schema, API routes, acceptance criteria, rules.
-3. `docs/design/` — screen-by-screen UI specs. Reference the relevant file per feature.
+1. `CLAUDE.md` — this file
+2. `FEATURES.md` — full feature spec, schema, API routes, acceptance criteria
+3. `docs/dev/conventions.md` — code patterns, naming conventions, folder structure
+4. `docs/design/` — screen-by-screen UI specs (reference the relevant file per feature)
 
-## Design Reference
-All UI/UX specs live in `docs/design/`. Key decisions:
-- **Colour:** Warm orange primary (#F97316), slate neutrals
-- **Font:** Inter, min 13px
-- **Spacing:** 4px base unit
-- **Mobile-first for coaches, desktop-first for owners**
-- **No dark mode Phase 1**
-- **Modals → bottom sheets on mobile**
-- **Tables → card lists on mobile**
-- **Attendance toggle: 48x48 min tap target, haptic feedback**
-- **Member portal: token-gated via WhatsApp, no login**
-- **Loading states: always skeletons, never spinners**
+## Commands Reference
+```bash
+# Dev
+pnpm dev                          # Run all apps (from root)
+cd apps/web && pnpm dev           # Run web app only
+
+# Type checking
+pnpm typecheck                    # From root (runs all packages)
+cd apps/web && pnpm typecheck     # Web app only
+
+# Lint
+pnpm lint
+
+# Supabase types (run after any migration)
+cd packages/database && supabase gen types typescript --local > src/types/database.gen.ts
+```

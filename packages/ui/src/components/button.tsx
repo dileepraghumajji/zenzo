@@ -111,7 +111,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           // Transitions
           "transition-colors duration-150 ease-standard",
           // Focus ring — keyboard navigation only, never on mouse click
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forge-500 focus-visible:ring-offset-2",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           // Disabled
           "disabled:pointer-events-none disabled:opacity-50",
           // Variant + size

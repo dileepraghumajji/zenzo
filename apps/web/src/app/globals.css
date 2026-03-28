@@ -51,6 +51,66 @@
 
   /* Overlay */
   --overlay-bg: rgba(21, 19, 16, 0.5); /* stone-900 at 50% */
+
+  /* Auth atmospheric glow — top-right corner on auth pages */
+  --auth-glow: radial-gradient(circle, rgba(255, 246, 236, 0.08) 0%, transparent 65%);
+}
+
+/* ─── Dark Mode — "Midnight Forge" ───────────────────────────────────────────
+   The same warm stone palette, but at night. Orange gains gravity in darkness.
+   Achieved entirely via CSS variable overrides — zero component changes needed.
+   ──────────────────────────────────────────────────────────────────────────── */
+.dark {
+  /* Surface — warm charcoal, not cold dark */
+  --surface-page:    #141210;   /* midnight stone */
+  --surface-subtle:  #1A1815;   /* sidebar, subtle areas */
+  --surface-raised:  #242118;   /* cards — clearly above page */
+  --surface-brand:   #2A1A08;   /* forge-tinted dark surface */
+
+  /* Border — barely-there warm dark lines */
+  --border-default:  #2E2A25;
+  --border-strong:   #3D3932;
+  --border-focus:    #EF6014;   /* forge-500 — unchanged, still vivid */
+  --border-error:    #EF4444;   /* slightly lighter for dark bg contrast */
+
+  /* Text — warm whites and grays, never cold */
+  --text-primary:    #EDE8E2;   /* warm off-white — headings */
+  --text-secondary:  #B5B0A8;   /* warm light gray — body */
+  --text-tertiary:   #726D67;   /* warm mid-gray — captions */
+  --text-placeholder:#4A4640;   /* warm dark gray */
+  --text-disabled:   #4A4640;
+  --text-inverse:    #141210;   /* on light/brand backgrounds */
+  --text-brand:      #F88030;   /* forge-400 — more vivid on dark than forge-600 */
+
+  /* Action — forge-600 works on both; hover brightens instead of darkens */
+  --action-primary-bg:       #C84A08;  /* forge-600 — same */
+  --action-primary-bg-hover: #EF6014;  /* forge-500 — brightens on dark (glow effect) */
+  --action-primary-text:     #FFFFFF;
+  --action-danger-bg:        #DC2626;
+  --action-danger-bg-hover:  #EF4444;
+
+  /* Status — dark tinted backgrounds with lighter, vivid text */
+  --status-success-bg:     #0A1A0D;
+  --status-success-text:   #4ADE80;   /* jade-400 — vivid on dark */
+  --status-success-border: #14532D;
+
+  --status-warning-bg:     #1A1005;
+  --status-warning-text:   #FCD34D;   /* sand-300 — vivid on dark */
+  --status-warning-border: #713F12;
+
+  --status-error-bg:       #1A0808;
+  --status-error-text:     #FCA5A5;   /* flame-300 — vivid on dark */
+  --status-error-border:   #7F1D1D;
+
+  --status-info-bg:        #061220;
+  --status-info-text:      #7DD3FC;   /* sky-300 — vivid on dark */
+  --status-info-border:    #0C4A6E;
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.75);
+
+  /* Auth atmospheric glow — ember warmth in darkness */
+  --auth-glow: radial-gradient(circle, rgba(200, 74, 8, 0.12) 0%, transparent 65%);
 }
 
 /* ─── Base Reset ──────────────────────────────────────────────────────────────
@@ -144,6 +204,17 @@
       #E9E7E3 25%,   /* stone-200 */
       #F4F3F0 50%,   /* stone-100 */
       #E9E7E3 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .dark .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #2E2A25 25%,   /* dark border-default */
+      #3D3932 50%,   /* dark border-strong */
+      #2E2A25 75%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;

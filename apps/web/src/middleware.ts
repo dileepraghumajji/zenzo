@@ -23,7 +23,14 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 // Routes that don't require authentication
-const PUBLIC_PATHS = ["/login", "/m/"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/onboarding",    // page handles its own auth redirect
+  "/auth/",         // Supabase auth callbacks (e.g. /auth/reset-password)
+  "/m/",            // member portal (token-gated, not session-gated)
+];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname.startsWith(path));

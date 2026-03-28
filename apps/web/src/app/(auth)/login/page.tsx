@@ -55,8 +55,16 @@ function LoginForm() {
       // Fetch tenantSlug + role now that the session cookie is set
       const res = await fetch("/api/auth/profile", { method: "POST" });
 
+      if (res.status === 404 || res.status === 400) {
+        // 404 = no profile row (user confirmed email before onboarding)
+        // 400 = profile exists but onboarding not completed
+        // In both cases, send to onboarding to complete setup.
+        router.push("/onboarding");
+        return;
+      }
+
       if (!res.ok) {
-        setError("Account not found. Please contact your administrator.");
+        setError("Something went wrong. Please try again.");
         return;
       }
 
@@ -74,103 +82,42 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="relative min-h-screen bg-surface-subtle flex items-center justify-center p-6 overflow-hidden">
 
-      {/* ── Left panel — brand story (desktop only) ─────────────────────────── */}
-      <div className="hidden lg:flex lg:w-[480px] xl:w-[520px] shrink-0 relative flex-col justify-between p-12 bg-primary overflow-hidden">
+      {/* Atmospheric glow — top-right corner, desktop only.
+          Light: forge-50 warmth felt through stone, barely visible.
+          Dark:  ember glow against midnight stone. */}
+      <div
+        className="pointer-events-none absolute -top-48 -right-32 h-[640px] w-[640px] rounded-full hidden lg:block"
+        style={{ background: "var(--auth-glow)" }}
+        aria-hidden="true"
+      />
 
-        {/* Dot grid texture — gives depth without clutter */}
-        <div
-          className="absolute inset-0 opacity-[0.08]"
-          style={{
-            backgroundImage: "radial-gradient(circle, #fff 1.5px, transparent 1.5px)",
-            backgroundSize: "28px 28px",
-          }}
-          aria-hidden="true"
-        />
+      <div className="relative w-full max-w-[420px]">
 
-        {/* Radial glow — bottom-left warmth */}
-        <div
-          className="absolute -bottom-32 -left-32 size-[480px] rounded-full opacity-20"
-          style={{ background: "radial-gradient(circle, #FDD1A3, transparent 70%)" }}
-          aria-hidden="true"
-        />
-
-        {/* Wordmark */}
-        <div className="relative">
-          <span className="text-[26px] font-bold tracking-tight text-white">
-            zenzo
-          </span>
-        </div>
-
-        {/* Headline */}
-        <div className="relative space-y-4">
-          <h2 className="text-[38px] leading-[46px] font-bold text-white">
-            Stop chasing fees.<br />
-            Start growing<br />
-            your gym.
-          </h2>
-          <p className="text-[15px] leading-6 text-white/70 max-w-[320px]">
-            Members, attendance, payments — managed in one place built for Indian gyms.
-          </p>
-        </div>
-
-        {/* Social proof */}
-        {/* NOTE: placeholder copy — replace with real stats before launch */}
-        <div className="relative space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2" aria-hidden="true">
-              {["R", "A", "S", "M"].map((initial) => (
-                <div
-                  key={initial}
-                  className="size-8 rounded-full bg-white/20 border-2 border-primary/60 flex items-center justify-center text-white text-[11px] font-bold"
-                >
-                  {initial}
-                </div>
-              ))}
-            </div>
-            <p className="text-[13px] text-white/70">
-              Trusted by{" "}
-              <span className="text-white font-semibold">500+ gym owners</span> across India
-            </p>
-          </div>
-
-          <figure className="border-l-2 border-white/25 pl-4 space-y-1">
-            <blockquote className="text-[13px] text-white/80 italic leading-5">
-              "Zenzo saved me 3 hours a day on fee collection alone."
-            </blockquote>
-            <figcaption className="text-[12px] text-white/50">
-              Rahul Sharma — Fitness First, Mumbai
-            </figcaption>
-          </figure>
-        </div>
-      </div>
-
-      {/* ── Right panel — form ───────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 bg-background">
-
-        {/* Mobile-only wordmark */}
-        <div className="lg:hidden mb-10">
+        {/* Wordmark — above the card, centered */}
+        <div className="text-center mb-8">
           <span className="text-[26px] font-bold tracking-tight text-brand">
             zenzo
           </span>
         </div>
 
-        <div className="w-full max-w-[400px]">
+        {/* Card — flat precision, no shadow */}
+        <div className="bg-surface-raised rounded-xl border border-border px-8 py-10">
 
           {/* Heading */}
-          <div className="mb-8">
-            <h1 className="text-h1 text-heading font-bold">Welcome back</h1>
+          <div className="mb-6">
+            <h1 className="text-display text-heading">Welcome back</h1>
             <p className="mt-1.5 text-body text-muted">
-              Sign in to your account to continue.
+              Sign in to your account.
             </p>
           </div>
 
-          {/* Error banner — TODO: replace with Toast when Task 15 ships */}
+          {/* Error banner */}
           {error && (
             <div
               role="alert"
-              className="mb-6 flex items-start gap-3 rounded-lg bg-error border border-error-accent px-4 py-3 text-body-sm text-error-foreground"
+              className="mb-5 flex items-start gap-3 rounded-lg bg-error border border-error-accent px-4 py-3 text-body-sm text-error-foreground"
             >
               <AlertCircle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
               {error}
@@ -198,7 +145,7 @@ function LoginForm() {
               labelRight={
                 <Link
                   href="/forgot-password"
-                  className="text-brand hover:underline"
+                  className="text-caption text-brand hover:underline"
                   tabIndex={-1}
                 >
                   Forgot password?
@@ -231,9 +178,11 @@ function LoginForm() {
               />
             </FormField>
 
-            <Button type="submit" fullWidth size="lg" loading={loading}>
-              Sign in
-            </Button>
+            <div className="pt-1">
+              <Button type="submit" fullWidth size="lg" loading={loading}>
+                Sign in
+              </Button>
+            </div>
 
           </form>
 
@@ -250,20 +199,20 @@ function LoginForm() {
             No structural changes to this card — purely additive.
 
             <div className="mt-6 pt-5 border-t border-border space-y-3">
-              <Button variant="secondary" fullWidth>Sign in with OTP</Button>
               <Button variant="secondary" fullWidth>Continue with Google</Button>
+              <Button variant="secondary" fullWidth>Sign in with OTP</Button>
             </div>
           */}
-        </div>
 
+        </div>
       </div>
     </div>
   );
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
-// Suspense wrapper is required by Next.js 14: any component using
-// useSearchParams() must be wrapped in <Suspense>.
+// Suspense wrapper required by Next.js 14: useSearchParams() must be inside
+// a Suspense boundary during static rendering.
 
 export default function LoginPage() {
   return (

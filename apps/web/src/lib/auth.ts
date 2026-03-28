@@ -9,10 +9,9 @@
 //   Automatic: layout re-runs on every navigation (Next.js App Router)
 //   Manual:    client calls router.refresh() after a role change
 //
-// Note on select(): use explicit column lists instead of "*".
-// Supabase's type-level parser expands "*" only with auto-generated types.
-// After running migrations: pnpm supabase gen types typescript --local
-// → replace packages/database/src/types/index.ts → "select(*)" works too.
+// Note on select():
+//   Use explicit column lists. select("*") returns the empty type {} with
+//   hand-written DB types (it only resolves to Row with auto-generated types).
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "./supabase/server";
@@ -33,8 +32,9 @@ export interface UserProfile {
 // Result flows DOWN as props — pages and client components never call this.
 //
 // Redirect cases:
-//   No session            → /login  (cookie expired)
-//   No profile for tenant → /login  (user revoked, wrong tenant slug)
+//   No session          → /login  (cookie expired)
+//   Profile not found   → /login  (user revoked, wrong tenant slug)
+//   tenant_id = null    → /onboarding  (owner hasn't finished setup)
 
 export async function getUserProfile(tenantSlug: string): Promise<UserProfile> {
   // Create the client directly so TypeScript preserves the full Database generic.
@@ -45,7 +45,6 @@ export async function getUserProfile(tenantSlug: string): Promise<UserProfile> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) redirect("/login");
 
-  // Fetch role + name. Explicit columns required until auto-generated types are in place.
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, role, full_name, tenant_id")
@@ -53,6 +52,10 @@ export async function getUserProfile(tenantSlug: string): Promise<UserProfile> {
     .single();
 
   if (profileError || !profile) redirect("/login");
+
+  // New owners who haven't completed onboarding have tenant_id = null.
+  // Redirect to onboarding so they can finish setup.
+  if (!profile.tenant_id) redirect("/onboarding");
 
   // Verify the tenant slug — prevents a user accessing another tenant by guessing slugs.
   const { error: tenantError } = await supabase
