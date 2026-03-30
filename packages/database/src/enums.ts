@@ -17,6 +17,7 @@ export const MembershipStatus = {
   Active:        "active",
   Overdue:       "overdue",
   Expired:       "expired",
+  Deleted:       "deleted",
 } as const;
 export type MembershipStatus = (typeof MembershipStatus)[keyof typeof MembershipStatus];
 

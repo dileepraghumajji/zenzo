@@ -1,2 +1,2 @@
-export { formatCurrency, formatDate } from "./formatters.js";
-export { slugify } from "./slugify.js";
+export { formatCurrency, formatDate } from "./formatters";
+export { slugify } from "./slugify";

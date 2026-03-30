@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@zenzo/ui";
 
 // Variable mode: exposes --font-inter for Tailwind's font-sans
 const inter = Inter({
@@ -25,7 +26,9 @@ export default function RootLayout({
     // this prevents the hydration mismatch warning for that attribute only.
     <html lang="en-IN" className={inter.variable} suppressHydrationWarning>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <Toaster>{children}</Toaster>
+        </ThemeProvider>
       </body>
     </html>
   );

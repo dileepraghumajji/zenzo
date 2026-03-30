@@ -14,6 +14,7 @@ import {
   Trophy,
   UserCheck,
   Settings,
+  CreditCard,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const ownerPrimaryNav: NavItem[] = [
   { icon: CalendarDays,    label: "Batches",    href: "batches" },
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: IndianRupee,     label: "Payments",   href: "payments" },
+  { icon: CreditCard,      label: "Plans",      href: "plans"    },
   { icon: BarChart2,       label: "Reports",    href: "reports" },
 ];
 

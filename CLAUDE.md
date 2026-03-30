@@ -297,10 +297,34 @@ Sprint 0 refactor complete (R1–R6):
 - [x] S1.3 — Post-login routing (1 club → dashboard, 2+ → picker, no club → onboarding)
 - [x] S1.4 — `[clubSlug]/layout.tsx` async server component with single `getUserProfile()` call
 
-### Up Next (Sprint 2 — P0.2 Member Management)
-1. S2.1 — Member list page (`/:clubSlug/members`)
-2. S2.2 — Single invite flow (phone lookup → active or pending_invite + WhatsApp)
-3. S2.7 — Invite token system (club_id + phone + 30-day expiry → auto-create membership on signup)
+### Sprint 2 complete (P0.2)
+- [x] S2.1 — Member list page with search, filter chips, desktop table, mobile cards, skeleton
+- [x] S2.2 — Add Member: `members/invite` page + form + `POST /api/members/invite` (phone lookup, active membership)
+- [x] Member profile — `members/[memberId]` with Overview tab (stats + recent payments), placeholder tabs
+
+### Session 8 — 2026-03-30
+Sprint 2 (P0.2 Member Management) complete:
+- **S2.1** — Already done (members list with search, filter chips, skeleton, desktop table, mobile cards).
+- **S2.2** — Built invite flow: `members/invite/page.tsx` (SC, pre-fetches batches + plans) + `invite/_components/invite-form.tsx` (client form: phone, batch select, plan select, start date). Created `POST /api/members/invite`: auth → staff verify → phone lookup → if user exists create `active` membership + `member_batches` row; if not found return `{ status: 'not_on_zenzo' }` (WhatsApp invite deferred to S2.7/P0.8).
+- **Profile page** — Built `members/[memberId]/page.tsx` (SC: membership + user + batches + attendance stats + recent payments) + `_components/member-profile-client.tsx` (tabs: Overview with stat cards + recent payments; Attendance/Payments/Progression as placeholders).
+
+### Session 9 — 2026-03-30
+Sprint 3 (P0.3 Batch Management) complete:
+- **S3.1** — Batch list page: `batches/page.tsx` (SC shell + Suspense) + `_components/batches-loader.tsx` (3-query: batches, member counts, coach names) + `_components/batches-client.tsx` (2-col card grid, empty state, ⋮ menu, `BatchListSkeleton`). Cards show timing, days, member count, coach.
+- **S3.2** — Create batch: `batches/new/page.tsx` (SC, pre-fetches coaches) + `new/_components/create-batch-form.tsx` (day toggle pills, time pickers, coach select, capacity, description). `POST /api/batches`: auth → staff verify → insert batch → return `{ batchId }`.
+- **S3.3** — Batch detail: `batches/[batchId]/page.tsx` (SC: batch + members + today's attendance) + `[batchId]/_components/batch-detail-client.tsx` (header, stat cards, Take Attendance CTA, desktop table + mobile cards, AddMemberDialog). APIs: `POST /api/batches/[batchId]/members` (assign), `DELETE /api/batches/[batchId]/members/[memberBatchId]` (remove), `GET /api/batches/[batchId]/eligible-members` (active members not yet in batch).
+
+### Session 10 — 2026-03-30
+Finished Sprint 2 (P0.2 Member Management) pending items:
+- **S2.4**: Implemented `Attendance` and `Payments` tabs in the member profile, rendering recent attendance records and full payment history.
+- **S2.6**: Implemented `Deactivate` (status = expired) and `Delete` (soft delete with status = deleted) member actions in the profile actions dropdown. Added API route `PATCH/DELETE /api/clubs/[clubId]/members/[memberId]/action`.
+- **S2.8 / Sprint 7 prep**: Added `Send WhatsApp` link natively using `wa.me/91{phone}`.
+- Updated `MembershipStatus` Enum to include `Deleted` and fixed associated downstream TypeScript errors.
+
+### Up Next (Sprint 4 — P0.4 Attendance)
+1. S4.1 — Take Attendance screen (`/:clubSlug/attendance/take/:batchId`) — bulk present/absent marking
+2. S4.2 — Attendance history (`/:clubSlug/attendance/history`) — by batch + date range
+3. S2.7 — Invite token system (deferred) — club_id + phone + 30-day expiry
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)
