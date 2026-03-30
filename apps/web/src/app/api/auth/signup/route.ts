@@ -3,16 +3,15 @@
 // Called by the signup page AFTER supabase.auth.signUp() succeeds and a
 // session is established (i.e. email confirmation is disabled in Supabase).
 //
-// Creates the `profiles` row for the new owner. tenant_id is intentionally
-// null here — it gets set in Step 2 of the onboarding wizard when the
-// business is created.
+// The handle_new_user() trigger on auth.users already creates the `users`
+// row automatically, so this route now just ensures the row exists and
+// returns success.
 //
 // Body: { full_name: string; phone: string }
 // Returns: { ok: true }
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { UserRole } from "@zenzo/database/enums";
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
@@ -30,17 +29,20 @@ export async function POST(request: NextRequest) {
   const full_name = body.full_name?.trim() ?? "";
   const phone = body.phone?.trim() ?? "";
 
-  const { error: insertError } = await supabase.from("profiles").insert({
-    id: user.id,
-    role: UserRole.Owner,
-    full_name,
-    phone,
-    email: user.email ?? null,
-    // tenant_id: null — set during onboarding wizard Step 2
-  });
+  // The handle_new_user() trigger creates the users row on signup.
+  // This upsert ensures data is up-to-date if the trigger already ran.
+  const { error: upsertError } = await supabase.from("users").upsert(
+    {
+      id: user.id,
+      full_name,
+      phone,
+      email: user.email ?? "",
+    },
+    { onConflict: "id" }
+  );
 
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
+  if (upsertError) {
+    return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@zenzo/ui";
+import { StaffRole } from "@zenzo/database/enums";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ const ownerMoreItems: BottomNavItem[] = [
   { icon: Settings,      label: "Settings",       href: "settings" },
 ];
 
-const staffPrimaryItems: BottomNavItem[] = [
+const coachPrimaryItems: BottomNavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: Users,           label: "Members",    href: "members" },
@@ -56,22 +57,22 @@ const staffPrimaryItems: BottomNavItem[] = [
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface BottomNavProps {
-  tenantSlug: string;
-  role?: "owner" | "staff";
+  clubSlug: string;
+  role?: StaffRole;
 }
 
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
-export function BottomNav({ tenantSlug, role = "owner" }: BottomNavProps) {
+export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = React.useState(false);
 
-  const primaryItems = role === "owner" ? ownerPrimaryItems : staffPrimaryItems;
-  const moreItems = role === "owner" ? ownerMoreItems : [];
+  const primaryItems = role === StaffRole.Owner ? ownerPrimaryItems : coachPrimaryItems;
+  const moreItems = role === StaffRole.Owner ? ownerMoreItems : [];
 
   const isActive = (href: string) =>
-    pathname === `/${tenantSlug}/${href}` ||
-    pathname.startsWith(`/${tenantSlug}/${href}/`);
+    pathname === `/${clubSlug}/${href}` ||
+    pathname.startsWith(`/${clubSlug}/${href}/`);
 
   // Close More sheet on route change
   React.useEffect(() => {
@@ -100,7 +101,7 @@ export function BottomNav({ tenantSlug, role = "owner" }: BottomNavProps) {
           return (
             <Link
               key={item.href}
-              href={`/${tenantSlug}/${item.href}`}
+              href={`/${clubSlug}/${item.href}`}
               className={cn(
                 "flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0",
                 "transition-colors duration-150",
@@ -137,7 +138,7 @@ export function BottomNav({ tenantSlug, role = "owner" }: BottomNavProps) {
       {/* ── More sheet (inline — replaced by BottomSheet component in Task 16) ── */}
       {moreOpen && (
         <MoreSheet
-          tenantSlug={tenantSlug}
+          clubSlug={clubSlug}
           items={moreItems}
           activeCheck={isActive}
           onClose={() => setMoreOpen(false)}
@@ -151,12 +152,12 @@ export function BottomNav({ tenantSlug, role = "owner" }: BottomNavProps) {
 // Minimal slide-up sheet. Will be replaced by the BottomSheet component (Task 16).
 
 function MoreSheet({
-  tenantSlug,
+  clubSlug,
   items,
   activeCheck,
   onClose,
 }: {
-  tenantSlug: string;
+  clubSlug: string;
   items: BottomNavItem[];
   activeCheck: (href: string) => boolean;
   onClose: () => void;
@@ -205,7 +206,7 @@ function MoreSheet({
             return (
               <Link
                 key={item.href}
-                href={`/${tenantSlug}/${item.href}`}
+                href={`/${clubSlug}/${item.href}`}
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-3 py-3 rounded-lg",

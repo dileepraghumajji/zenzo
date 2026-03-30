@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@zenzo/ui";
+import { StaffRole } from "@zenzo/database/enums";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ const ownerSecondaryNav: NavItem[] = [
   { icon: Settings,      label: "Settings",       href: "settings" },
 ];
 
-const staffPrimaryNav: NavItem[] = [
+const coachPrimaryNav: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: Users,           label: "Members",    href: "members" },
@@ -55,8 +56,8 @@ const staffPrimaryNav: NavItem[] = [
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface SidebarProps {
-  tenantSlug: string;
-  role?: "owner" | "staff";
+  clubSlug: string;
+  role?: StaffRole;
   userName?: string;
   userInitials?: string;
 }
@@ -64,8 +65,8 @@ export interface SidebarProps {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 export function Sidebar({
-  tenantSlug,
-  role = "owner",
+  clubSlug,
+  role = StaffRole.Owner,
   userName = "User",
   userInitials = "U",
 }: SidebarProps) {
@@ -86,12 +87,12 @@ export function Sidebar({
     });
   };
 
-  const primaryNav = role === "owner" ? ownerPrimaryNav : staffPrimaryNav;
-  const secondaryNav = role === "owner" ? ownerSecondaryNav : [];
+  const primaryNav = role === StaffRole.Owner ? ownerPrimaryNav : coachPrimaryNav;
+  const secondaryNav = role === StaffRole.Owner ? ownerSecondaryNav : [];
 
   const isActive = (href: string) =>
-    pathname === `/${tenantSlug}/${href}` ||
-    pathname.startsWith(`/${tenantSlug}/${href}/`);
+    pathname === `/${clubSlug}/${href}` ||
+    pathname.startsWith(`/${clubSlug}/${href}/`);
 
   return (
     <aside
@@ -136,7 +137,7 @@ export function Sidebar({
           <SidebarNavItem
             key={item.href}
             item={item}
-            href={`/${tenantSlug}/${item.href}`}
+            href={`/${clubSlug}/${item.href}`}
             active={isActive(item.href)}
             collapsed={isCollapsed}
           />
@@ -150,7 +151,7 @@ export function Sidebar({
               <SidebarNavItem
                 key={item.href}
                 item={item}
-                href={`/${tenantSlug}/${item.href}`}
+                href={`/${clubSlug}/${item.href}`}
                 active={isActive(item.href)}
                 collapsed={isCollapsed}
               />

@@ -168,19 +168,19 @@ Layer 3: Pages (Server Components / Client Components)
 
 ### Phase 1 (Current)
 **Email + Password** via `supabase.auth.signInWithPassword` / `supabase.auth.signUp`.
+**Google Auth** via `supabase.auth.signInWithOAuth({ provider: 'google' })`.
 
 **Signup flow:**
 1. Full Name + Phone + Email + Password → submit
-2. WhatsApp OTP sent via Interakt to phone number
-3. User enters 6-digit OTP in modal
-4. On success: Supabase account + `users` row created
-5. Post-signup routing: invited? → create membership + portal. Owner? → onboarding wizard.
+2. Or user clicks "Continue with Google"
+3. On success: Supabase account + `users` row created
+4. Post-signup routing: invited? → create membership + portal. Owner? → onboarding wizard.
 
-**Phone is NOT an auth credential.** It's collected at signup, stored in `users.phone`, used for WhatsApp only.
+**Phone is NOT an auth credential.** It's collected at signup, stored in `users.phone`, used for WhatsApp only. Wait for phone verification is deferred to save costs.
 
 ### Future (do NOT build yet)
 - Phone OTP login — additive button on login page
-- Google Sign-In — consumer app, Phase 2
+- Interakt integration for WhatsApp notifications and OTP
 
 ---
 
@@ -223,7 +223,7 @@ pending_invite → active → overdue → expired
 | `apps/web/src/app/api/auth/profile/route.ts` | POST — returns clubSlug + role after login |
 | `apps/web/src/components/sidebar.tsx` | Desktop sidebar + `SidebarSkeleton` |
 | `apps/web/src/components/bottom-nav.tsx` | Mobile bottom nav + `MoreSheet` |
-| `apps/web/src/app/(dashboard)/[tenantSlug]/layout.tsx` | Async layout (needs rename to [clubSlug]) |
+| `apps/web/src/app/(dashboard)/[clubSlug]/layout.tsx` | Async layout — Club dashboard shell |
 | `packages/database/src/enums.ts` | All DB enum values (single source of truth) |
 | `packages/database/src/types/index.ts` | Hand-written DB types |
 
@@ -231,20 +231,11 @@ pending_invite → active → overdue → expired
 
 ## Tech Debt / Refactoring Required
 
-These files are built but use the old naming. They work but MUST be refactored before shipping:
-
 | File | Issue | Action |
 |---|---|---|
-| `app/(dashboard)/[tenantSlug]/layout.tsx` | Wrong route param name | Move to `[clubSlug]/layout.tsx` |
-| `apps/web/src/middleware.ts` | References `tenantSlug` variable names | Rename variables to `clubSlug` |
-| `apps/web/src/lib/auth.ts` | `getUserProfile()` queries old `profiles` + `tenants` tables | Rewrite to use `users` + `clubs` + `club_staff` |
-| `apps/web/src/app/api/auth/profile/route.ts` | Queries old schema, returns `tenantSlug` | Rewrite to use new schema, return `clubSlug` |
-| `apps/web/src/components/sidebar.tsx` | Uses `staff` role, references `tenantSlug` | Update to `coach` role, `clubSlug` |
-| `apps/web/src/components/bottom-nav.tsx` | Uses `staff` role | Update to `coach` role |
-| `packages/database/src/enums.ts` | Has old enum values (MemberStatus, SessionType, TenantPlan) | Replace with new enums (see FEATURES.md) |
-| `packages/database/src/types/index.ts` | Has old table types (tenants, profiles, members, sessions) | Replace with new table types (users, clubs, club_staff, club_memberships, batches, etc.) |
-| `app/(auth)/signup/page.tsx` | No WhatsApp OTP phone verification step | Add OTP modal after form submit |
-| `app/(auth)/login/page.tsx` | No post-login club-switcher for multi-club owners | Add club selection when user owns 2+ clubs |
+| `apps/web/src/middleware.ts` | Comments reference `tenantSlug` | Rename comments to `clubSlug` (cosmetic) |
+| `apps/web/src/app/api/onboarding/batch/route.ts` | `days: days as any[]` cast | Fix when DayOfWeek enum is enforced in Postgres |
+| `apps/web/src/app/api/onboarding/invites/route.ts` | Invites acknowledged but not persisted | Wire up membership creation + WhatsApp in Sprint 2 + 7 |
 
 ---
 
@@ -267,31 +258,49 @@ Key fixes: upgraded `@supabase/ssr` to 0.9.0 + `@supabase/supabase-js` to 2.100.
 ### Session 5 — 2026-03-28
 Rewrote `CLAUDE.md`, `FEATURES.md`, and created `docs/dev/conventions.md` to reflect new product philosophy (two-sided platform, no shadow users, `clubSlug` naming, `coach` role, new data model).
 
+### Session 7 — 2026-03-28
+Sprint 1 complete (S1.1–S1.4):
+- **S1.3** — Already done: `login/page.tsx` calls `POST /api/auth/profile` → routes to 1-club dashboard, multi-club `/clubs` picker, or `/onboarding`. `auth/callback/route.ts` mirrors this for Google OAuth.
+- **S1.4** — Already done: `[clubSlug]/layout.tsx` built in Sprint 0.
+- **S1.2** — Created `apps/web/src/app/api/clubs/route.ts` (`POST /api/clubs`): canonical club creation (name, slug, business_type, city → `clubs` row + `club_staff` row, `verification_status: pending`, `listed: false`). Separate from `/api/onboarding/studio` which additionally upserts the `users` row for first-time onboarding.
+- **S1.1** — Onboarding wizard updated: added Step 4 "Invite First Members" (skippable, up to 5 phone+name pairs). Created `apps/web/src/app/api/onboarding/invites/route.ts` (`POST /api/onboarding/invites`): validates 10-digit Indian phones, acknowledges queue. WhatsApp dispatch + membership creation deferred to Sprint 7 + Sprint 2. Wizard now has 4 progress-dot steps + a step 5 completion screen (no dot active). Also updated Tech Debt table — `onboarding/page.tsx` and `api/onboarding/studio/route.ts` are now on the new schema (stale entries removed).
+
+### Session 6 — 2026-03-28
+Sprint 0 refactor complete (R1–R6):
+- **R1** `packages/database/src/enums.ts` — replaced with new enums: `StaffRole` (owner/coach), `MembershipStatus`, `BillingCycle`, `PaymentMethod`, `ClubCategory`, `VerificationStatus`, `DayOfWeek`, `AttendanceStatus`.
+- **R2** `packages/database/src/types/index.ts` — replaced with new table types: `users`, `clubs`, `club_staff`, `club_memberships`, `member_batches`, `batches`, `fee_plans`, `attendance_records`, `payments`.
+- **R3** Renamed `app/(dashboard)/[tenantSlug]/` → `[clubSlug]/`. Updated `layout.tsx`: `params.tenantSlug` → `params.clubSlug`, `UserRole` → `StaffRole`, member-redirect guard updated.
+- **R4** Rewrote `lib/auth.ts` `getUserProfile()` to query `clubs` → `club_staff` → `users`. Returns `clubId` (not `tenantId`). `UserProfile.role` is now typed as `StaffRole`.
+- **R5** Rewrote `api/auth/profile/route.ts` to query `club_staff` + `clubs`, returns `{ clubSlug, role }`.
+- **R6** Updated `sidebar.tsx` + `bottom-nav.tsx`: `tenantSlug` → `clubSlug`, `"staff"` → `StaffRole.Coach`, `staffPrimaryNav` → `coachPrimaryNav`. Deleted dead `sidebar-server.tsx` stub. Fixed `login/page.tsx` to destructure `clubSlug` from profile response.
+
 ---
 
 ## Status
 
-### Built (needs refactoring to new model)
-- [~] Monorepo skeleton (Turborepo + pnpm) — correct
-- [~] Auth middleware — logic correct, variable names use old `tenantSlug`
-- [~] SSR Supabase client (`lib/supabase/server.ts`) — correct, keep
-- [~] Auth utility `getUserProfile()` — queries old schema, needs rewrite
-- [~] POST /api/auth/profile — queries old schema, needs rewrite
-- [~] Sidebar — logic correct, wrong role name (`staff` → `coach`), wrong param (`tenantSlug` → `clubSlug`)
-- [~] BottomNav — same as sidebar
-- [~] Dashboard layout `[tenantSlug]/layout.tsx` — needs rename + new schema
-- [~] DB enums — old values, needs new enum additions
-- [~] DB types — old table structure, needs complete replacement
-- [~] Auth pages (login, signup, forgot-password) — signup missing WhatsApp OTP step
+### Built and on new model (Sprint 0 complete)
+- [x] Monorepo skeleton (Turborepo + pnpm)
+- [x] Auth middleware — Edge JWT guard
+- [x] SSR Supabase client (`lib/supabase/server.ts`)
+- [x] Auth utility `getUserProfile()` — queries `clubs` + `club_staff` + `users`
+- [x] POST /api/auth/profile — returns `clubSlug` from new schema
+- [x] Sidebar — `StaffRole`, `clubSlug`, `coachPrimaryNav`
+- [x] BottomNav — `StaffRole`, `clubSlug`, `coachPrimaryItems`
+- [x] Dashboard layout `[clubSlug]/layout.tsx` — new schema, `StaffRole` guard
+- [x] DB enums — `StaffRole`, `MembershipStatus`, `BillingCycle`, `PaymentMethod`, `ClubCategory`, `VerificationStatus`, `DayOfWeek`, `AttendanceStatus`
+- [x] DB types — `users`, `clubs`, `club_staff`, `club_memberships`, `member_batches`, `batches`, `fee_plans`, `attendance_records`, `payments`
+- [x] Auth pages (login, signup, forgot-password) combined with Google OAuth
 
-### Up Next (Refactor Sprint)
-1. Replace `packages/database/src/enums.ts` with new enum values
-2. Replace `packages/database/src/types/index.ts` with new table types
-3. Rename `[tenantSlug]` → `[clubSlug]` route folder
-4. Rewrite `lib/auth.ts` to use `clubs` + `club_staff` tables
-5. Rewrite `api/auth/profile/route.ts` to return `clubSlug`
-6. Update `sidebar.tsx` + `bottom-nav.tsx` role names + param names
-7. Add WhatsApp OTP verification step to signup page
+### Sprint 1 complete (P0.1)
+- [x] S1.1 — Onboarding wizard (5 steps: business type, studio setup, batch, invite members, done)
+- [x] S1.2 — `POST /api/clubs` — canonical club creation
+- [x] S1.3 — Post-login routing (1 club → dashboard, 2+ → picker, no club → onboarding)
+- [x] S1.4 — `[clubSlug]/layout.tsx` async server component with single `getUserProfile()` call
+
+### Up Next (Sprint 2 — P0.2 Member Management)
+1. S2.1 — Member list page (`/:clubSlug/members`)
+2. S2.2 — Single invite flow (phone lookup → active or pending_invite + WhatsApp)
+3. S2.7 — Invite token system (club_id + phone + 30-day expiry → auto-create membership on signup)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

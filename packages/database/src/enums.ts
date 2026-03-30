@@ -3,35 +3,55 @@
 // Keep in sync with the SQL enums defined in the migration files.
 //
 // Usage:
-//   import { UserRole, MemberStatus } from "@zenzo/database/enums";
-//   if (profile.role === UserRole.Owner) { ... }
+//   import { StaffRole, MembershipStatus } from "@zenzo/database/enums";
+//   if (profile.role === StaffRole.Owner) { ... }
 
-export const UserRole = {
-  Owner:  "owner",
-  Staff:  "staff",
-  Member: "member",
+export const StaffRole = {
+  Owner: "owner",
+  Coach: "coach",
 } as const;
-export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+export type StaffRole = (typeof StaffRole)[keyof typeof StaffRole];
 
-export const MemberStatus = {
-  Active:    "active",
-  Inactive:  "inactive",
-  Suspended: "suspended",
+export const MembershipStatus = {
+  PendingInvite: "pending_invite",
+  Active:        "active",
+  Overdue:       "overdue",
+  Expired:       "expired",
 } as const;
-export type MemberStatus = (typeof MemberStatus)[keyof typeof MemberStatus];
+export type MembershipStatus = (typeof MembershipStatus)[keyof typeof MembershipStatus];
 
-export const AttendanceStatus = {
-  Present:   "present",
-  Absent:    "absent",
-  Unmarked:  "unmarked",
+export const BillingCycle = {
+  Monthly:    "monthly",
+  Quarterly:  "quarterly",
+  HalfYearly: "half_yearly",
+  Annual:     "annual",
+  PerSession:  "per_session",
 } as const;
-export type AttendanceStatus = (typeof AttendanceStatus)[keyof typeof AttendanceStatus];
+export type BillingCycle = (typeof BillingCycle)[keyof typeof BillingCycle];
 
-export const SessionType = {
-  Group:     "group",
-  OneOnOne:  "one_on_one",
+export const PaymentMethod = {
+  Cash:  "cash",
+  UPI:   "upi",
+  Bank:  "bank",
+  Other: "other",
 } as const;
-export type SessionType = (typeof SessionType)[keyof typeof SessionType];
+export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
+
+export const ClubCategory = {
+  Gym:         "gym",
+  MartialArts: "martial_arts",
+  Dance:       "dance",
+  Yoga:        "yoga",
+  Other:       "other",
+} as const;
+export type ClubCategory = (typeof ClubCategory)[keyof typeof ClubCategory];
+
+export const VerificationStatus = {
+  Pending:  "pending",
+  Verified: "verified",
+  Rejected: "rejected",
+} as const;
+export type VerificationStatus = (typeof VerificationStatus)[keyof typeof VerificationStatus];
 
 export const DayOfWeek = {
   Mon: "mon", Tue: "tue", Wed: "wed",
@@ -39,10 +59,9 @@ export const DayOfWeek = {
 } as const;
 export type DayOfWeek = (typeof DayOfWeek)[keyof typeof DayOfWeek];
 
-export const TenantPlan = {
-  Trial:   "trial",
-  Starter: "starter",
-  Growth:  "growth",
-  Pro:     "pro",
+export const AttendanceStatus = {
+  Present:  "present",
+  Absent:   "absent",
+  Unmarked: "unmarked",
 } as const;
-export type TenantPlan = (typeof TenantPlan)[keyof typeof TenantPlan];
+export type AttendanceStatus = (typeof AttendanceStatus)[keyof typeof AttendanceStatus];

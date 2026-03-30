@@ -1,4 +1,4 @@
 export { supabase, createServiceClient } from "./client.js";
 export type { Database, Json } from "./types/index.js";
-export { UserRole, MemberStatus, AttendanceStatus, SessionType, DayOfWeek, TenantPlan } from "./enums.js";
-export type { UserRole as UserRoleType, MemberStatus as MemberStatusType, AttendanceStatus as AttendanceStatusType, SessionType as SessionTypeType } from "./enums.js";
+export { StaffRole, MembershipStatus, BillingCycle, PaymentMethod, ClubCategory, VerificationStatus, DayOfWeek, AttendanceStatus } from "./enums.js";
+export type { StaffRole as StaffRoleType, MembershipStatus as MembershipStatusType, BillingCycle as BillingCycleType, PaymentMethod as PaymentMethodType, ClubCategory as ClubCategoryType, VerificationStatus as VerificationStatusType, DayOfWeek as DayOfWeekType, AttendanceStatus as AttendanceStatusType } from "./enums.js";

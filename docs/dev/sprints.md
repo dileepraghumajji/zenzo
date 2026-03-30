@@ -8,7 +8,7 @@ R3	Rename route folder	app/(dashboard)/[tenantSlug]/	Move to app/(dashboard)/[cl
 R4	Rewrite lib/auth.ts	apps/web/src/lib/auth.ts	Rewrite getUserProfile(clubSlug) to query clubs + club_staff tables instead of tenants + profiles
 R5	Rewrite profile route	apps/web/src/app/api/auth/profile/route.ts	Update to query new schema, return clubSlug (not tenantSlug)
 R6	Update Sidebar + BottomNav	sidebar.tsx, bottom-nav.tsx	Replace staff role with coach, tenantSlug with clubSlug
-R7	Add OTP step to signup	app/(auth)/signup/page.tsx	After form submit, send WhatsApp OTP via Interakt, show 6-digit OTP modal, verify before creating account
+R7	Finalize Auth flow	app/(auth)/signup/page.tsx	Revert WhatsApp OTP, add Google Auth and standard email signup to save on Interakt costs initially
 Sprint 1 — Foundation (P0.1)
 Auth + Club Onboarding. Everything depends on this.
 

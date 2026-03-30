@@ -1,8 +1,8 @@
 // POST /api/auth/profile
 //
 // Called by the login page AFTER Supabase signInWithPassword() succeeds.
-// Returns the user's tenant slug + role so the login page can redirect to
-// /:tenantSlug/dashboard.
+// Returns the user's clubs so the login page can redirect to
+// /:clubSlug/dashboard or /clubs.
 //
 // Why a route handler and not a server action?
 // The login page is a client component (handles form input + submission).
@@ -11,8 +11,8 @@
 // Flow:
 //   1. Login page: supabase.auth.signInWithPassword() → session cookie set
 //   2. Login page: POST /api/auth/profile
-//   3. This handler: reads session → queries profiles + tenants → {tenantSlug, role}
-//   4. Login page: router.push("/${tenantSlug}/dashboard")
+//   3. This handler: reads session → queries club_staff + clubs → { clubs }
+//   4. Login page: router.push("/${clubSlug}/dashboard") or "/clubs"
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -29,33 +29,35 @@ export async function POST() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single();
+  // Find all clubs this user is staff at (owner or coach).
+  const { data: staff, error: staffError } = await supabase
+    .from("club_staff")
+    .select("role, club_id")
+    .eq("user_id", user.id);
 
-  if (profileError || !profile) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  if (staffError || !staff || staff.length === 0) {
+    return NextResponse.json({ error: "No club membership found" }, { status: 404 });
   }
 
-  // tenant_id is null for users who haven't completed onboarding
-  if (!profile.tenant_id) {
-    return NextResponse.json({ error: "Onboarding incomplete" }, { status: 400 });
+  const clubIds = staff.map((s) => s.club_id);
+
+  const { data: clubsData, error: clubsError } = await supabase
+    .from("clubs")
+    .select("id, slug, name")
+    .in("id", clubIds);
+
+  if (clubsError || !clubsData || clubsData.length === 0) {
+    return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
 
-  const { data: tenant, error: tenantError } = await supabase
-    .from("tenants")
-    .select("slug")
-    .eq("id", profile.tenant_id)
-    .single();
-
-  if (tenantError || !tenant) {
-    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    tenantSlug: tenant.slug,
-    role: profile.role,
+  const clubs = clubsData.map((club) => {
+    const role = staff.find((s) => s.club_id === club.id)?.role;
+    return {
+      slug: club.slug,
+      name: club.name,
+      role: role,
+    };
   });
+
+  return NextResponse.json({ clubs });
 }

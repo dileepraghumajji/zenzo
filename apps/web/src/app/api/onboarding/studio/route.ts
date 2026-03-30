@@ -1,10 +1,14 @@
 // POST /api/onboarding/studio
 //
 // Step 2 of the onboarding wizard.
-// Creates the tenant + updates the owner's profile.tenant_id.
+// Creates the club + links the owner as club_staff.
+//
+// Uses the admin (service-role) client for DB writes because the user has no
+// club_staff rows yet, so RLS policies that check club membership would block
+// the very first INSERT.
 //
 // Body: { business_name, slug, city, business_type }
-// Returns: { tenantSlug, tenantId }
+// Returns: { clubSlug, clubId }
 //
 // Error codes:
 //   401 — not authenticated
@@ -12,8 +16,8 @@
 //   500 — DB error
 
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { TenantPlan, UserRole } from "@zenzo/database/enums";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
+import { ClubCategory, StaffRole, VerificationStatus } from "@zenzo/database/enums";
 
 type Body = {
   business_name?: string;
@@ -23,6 +27,7 @@ type Body = {
 };
 
 export async function POST(request: NextRequest) {
+  // Auth — use the cookie-based client to verify the caller
   const supabase = createSupabaseServerClient();
 
   const {
@@ -47,79 +52,90 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check if the profile already has a tenant (idempotency guard)
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", user.id)
-    .single();
+  // DB writes — use the admin client (bypasses RLS)
+  const admin = createSupabaseAdminClient();
 
-  if (profile?.tenant_id) {
-    // Already has a tenant — fetch and return it
-    const { data: existing } = await supabase
-      .from("tenants")
+  // Ensure the users row exists (handle_new_user trigger may not have fired
+  // if the DB was reset after signup — auth.users persists but public.users
+  // is wiped).
+  await admin.from("users").upsert(
+    {
+      id: user.id,
+      full_name: user.user_metadata?.full_name ?? "User",
+      phone: user.user_metadata?.phone ?? "",
+      email: user.email ?? "",
+      auth_provider: user.app_metadata?.provider ?? "email",
+    },
+    { onConflict: "id" }
+  );
+
+
+  // Check if the user already has a club (idempotency guard)
+  const { data: staff } = await admin
+    .from("club_staff")
+    .select("club_id")
+    .eq("user_id", user.id)
+    .limit(1);
+
+  if (staff && staff.length > 0) {
+    // Already has a club — fetch and return it
+    const { data: existing } = await admin
+      .from("clubs")
       .select("id, slug")
-      .eq("id", profile.tenant_id)
+      .eq("id", staff[0]!.club_id)
       .single();
 
     if (existing) {
       return NextResponse.json({
-        tenantSlug: existing.slug,
-        tenantId: existing.id,
+        clubSlug: existing.slug,
+        clubId: existing.id,
       });
     }
   }
 
-  // Create the tenant
-  const { data: tenant, error: tenantError } = await supabase
-    .from("tenants")
+
+  // Create the club
+  const { data: club, error: clubError } = await admin
+    .from("clubs")
     .insert({
       slug,
       name: business_name,
-      business_type,
+      business_type: business_type as ClubCategory,
       city,
       terminology: {},
-      plan: TenantPlan.Trial,
+      owner_id: user.id,
+      verification_status: VerificationStatus.Pending,
+      listed: false,
+      phone: null,
+      logo_url: null,
     })
     .select("id, slug")
     .single();
 
-  if (tenantError) {
+  if (clubError) {
     // Postgres unique violation on slug column
-    if (tenantError.code === "23505") {
+    if (clubError.code === "23505") {
       return NextResponse.json({ error: "slug_taken" }, { status: 409 });
     }
-    return NextResponse.json({ error: tenantError.message }, { status: 500 });
+    return NextResponse.json({ error: clubError.message }, { status: 500 });
   }
 
-  // Link the profile to the new tenant.
-  // Use upsert — when email confirmation is enabled, signUp() returns no session
-  // so /api/auth/signup is never called and the profiles row may not exist yet.
-  // user_metadata carries full_name + phone set during signUp options.data.
-  const fullName = typeof user.user_metadata?.full_name === "string"
-    ? user.user_metadata.full_name
-    : null;
-  const phone = typeof user.user_metadata?.phone === "string"
-    ? user.user_metadata.phone
-    : null;
+  // Link the user to the new club as an owner
+  const { error: staffError } = await admin
+    .from("club_staff")
+    .insert({
+      club_id: club.id,
+      user_id: user.id,
+      role: StaffRole.Owner,
+    });
 
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .upsert({
-      id: user.id,
-      tenant_id: tenant.id,
-      role: UserRole.Owner,
-      full_name: fullName,
-      phone,
-      email: user.email ?? null,
-    }, { onConflict: "id" });
-
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+  if (staffError) {
+    return NextResponse.json({ error: staffError.message }, { status: 500 });
   }
 
   return NextResponse.json({
-    tenantSlug: tenant.slug,
-    tenantId: tenant.id,
+    clubSlug: club.slug,
+    clubId: club.id,
   });
 }
+
