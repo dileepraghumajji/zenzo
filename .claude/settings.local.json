@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "Bash(find d:/projects/zenzo/node_modules/.pnpm -name *.d.ts -path *supabase*ssr*)",
+      "Bash(ls d:/projects/zenzo/apps/web/src/app/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/\")",
+      "Bash(find \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/[tenantSlug]\" -type f)",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/[clubSlug]/\")",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(auth\\)/\")",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(auth\\)/auth/\")",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/clubs/\")",
+      "Bash(cat \"d:/projects/zenzo/apps/web/src/app/\\(auth\\)/auth/route.ts\")",
+      "Bash(cat \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/clubs/page.tsx\")",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/[clubSlug]/dashboard/\")",
+      "Bash(ls \"d:/projects/zenzo/apps/web/src/app/\\(dashboard\\)/[clubSlug]/members/\")",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(supabase status:*)",
+      "Bash(where supabase:*)",
+      "Bash(npx supabase:*)",
+      "Bash(ls d:/projects/zenzo/apps/web/.env*)",
+      "Bash(ls d:/projects/zenzo/.env*)"
+    ]
+  }
+}
