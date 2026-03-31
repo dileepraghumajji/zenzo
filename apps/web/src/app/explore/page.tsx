@@ -99,7 +99,7 @@ async function ClubResults({
     .limit(40);
 
   if (q)        query = query.ilike("name", `%${q}%`);
-  if (category) query = query.eq("business_type", category);
+  if (category) query = query.eq("business_type", category as ClubCategory);
   if (city)     query = query.ilike("city", `%${city}%`);
 
   const { data: clubs } = await query;
