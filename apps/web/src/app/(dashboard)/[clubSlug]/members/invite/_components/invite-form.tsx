@@ -22,7 +22,7 @@ import {
   SelectItem,
 } from "@zenzo/ui";
 import { formatCurrency } from "@zenzo/utils";
-import { Phone, UserX } from "lucide-react";
+import { Mail, CheckCircle } from "lucide-react";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ interface InviteFormProps {
 export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   const router = useRouter();
 
-  const [phone,   setPhone]   = React.useState("");
+  const [email,   setEmail]   = React.useState("");
   const [batchId, setBatchId] = React.useState("");
   const [planId,  setPlanId]  = React.useState("");
   const [startDate, setStartDate] = React.useState(
@@ -57,17 +57,16 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
 
   const [errors,   setErrors]   = React.useState<Record<string, string>>({});
   const [apiState, setApiState] = React.useState<
-    "idle" | "loading" | "not_on_zenzo" | "already_a_member"
+    "idle" | "loading" | "invite_sent" | "already_a_member"
   >("idle");
 
   // ── Validation ──────────────────────────────────────────────────────────────
   function validate() {
     const next: Record<string, string> = {};
-    const digits = phone.replace(/\D/g, "");
-    if (!digits)         next.phone   = "Phone number is required";
-    else if (digits.length !== 10) next.phone = "Must be a 10-digit mobile number";
-    if (!batchId)        next.batchId = "Select a batch";
-    if (!planId)         next.planId  = "Select a fee plan";
+    if (!email.trim())                                   next.email   = "Email address is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email   = "Enter a valid email address";
+    if (!batchId)                                        next.batchId = "Select a batch";
+    if (!planId)                                         next.planId  = "Select a fee plan";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -86,7 +85,7 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clubSlug,
-          phone: phone.replace(/\D/g, ""),
+          email: email.trim().toLowerCase(),
           batchId,
           planId,
           startDate,
@@ -104,8 +103,8 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         return;
       }
 
-      if (res.ok && data.status === "not_on_zenzo") {
-        setApiState("not_on_zenzo");
+      if (res.ok && data.status === "invite_sent") {
+        setApiState("invite_sent");
         return;
       }
 
@@ -127,41 +126,38 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
 
-      {/* ── Phone ─────────────────────────────────────────────────────────── */}
+      {/* ── Email ─────────────────────────────────────────────────────────── */}
       <FormField
-        label="Phone Number"
-        htmlFor="phone"
+        label="Email Address"
+        htmlFor="email"
         required
-        error={errors.phone}
-        hint="10-digit Indian mobile number"
+        error={errors.email}
+        hint="They'll receive an invite email if they're not on Zenzo yet"
       >
         <Input
-          id="phone"
-          type="tel"
-          inputMode="numeric"
-          placeholder="98765 43210"
-          value={phone}
+          id="email"
+          type="email"
+          inputMode="email"
+          placeholder="member@example.com"
+          value={email}
           onChange={(e) => {
-            setPhone(e.target.value);
+            setEmail(e.target.value);
             setApiState("idle");
           }}
-          error={!!errors.phone}
-          prefix={<Phone />}
-          maxLength={10}
-          autoComplete="tel"
+          error={!!errors.email}
+          prefix={<Mail />}
+          autoComplete="email"
         />
       </FormField>
 
-      {/* ── Not on Zenzo banner ───────────────────────────────────────────── */}
-      {apiState === "not_on_zenzo" && (
+      {/* ── Invite sent banner ────────────────────────────────────────────── */}
+      {apiState === "invite_sent" && (
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-border bg-surface-subtle text-[13px] text-muted">
-          <UserX className="size-4 shrink-0 mt-0.5 text-muted" />
+          <CheckCircle className="size-4 shrink-0 mt-0.5 text-brand" />
           <p>
-            No Zenzo account found for this number.{" "}
-            <span className="text-foreground font-medium">
-              They&apos;ll receive a WhatsApp invite to sign up.
-            </span>{" "}
-            Membership will activate once they join.
+            Invite sent to{" "}
+            <span className="text-foreground font-medium">{email}</span>.
+            Membership will activate once they sign up on Zenzo.
           </p>
         </div>
       )}

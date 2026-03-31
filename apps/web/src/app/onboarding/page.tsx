@@ -46,7 +46,7 @@ function toSlug(name: string): string {
 // Step 5 is the completion screen (no active dot).
 type Step = 1 | 2 | 3 | 4 | 5;
 
-type Invitee = { phone: string; name: string };
+type Invitee = { email: string; name: string };
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ export default function OnboardingPage() {
   const [step3Loading, setStep3Loading] = useState(false);
 
   // Step 4 — invite members (optional)
-  const [invitees, setInvitees]         = useState<Invitee[]>([{ phone: "", name: "" }]);
+  const [invitees, setInvitees]         = useState<Invitee[]>([{ email: "", name: "" }]);
   const [step4Loading, setStep4Loading] = useState(false);
   const [step4Error, setStep4Error]     = useState<string | null>(null);
 
@@ -238,7 +238,7 @@ export default function OnboardingPage() {
   async function handleStep4Next() {
     if (!clubId) return;
 
-    const filled = invitees.filter((inv) => inv.phone.trim());
+    const filled = invitees.filter((inv) => inv.email.trim());
 
     if (filled.length === 0) {
       // Nothing entered — treat as skip
@@ -281,7 +281,7 @@ export default function OnboardingPage() {
 
   function addInvitee() {
     if (invitees.length < 5) {
-      setInvitees((prev) => [...prev, { phone: "", name: "" }]);
+      setInvitees((prev) => [...prev, { email: "", name: "" }]);
     }
   }
 
@@ -289,7 +289,7 @@ export default function OnboardingPage() {
     setInvitees((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateInvitee(index: number, field: "phone" | "name", value: string) {
+  function updateInvitee(index: number, field: "email" | "name", value: string) {
     setInvitees((prev) =>
       prev.map((inv, i) => (i === index ? { ...inv, [field]: value } : inv))
     );
@@ -615,7 +615,7 @@ export default function OnboardingPage() {
               <div className="mb-6">
                 <h1 className="text-display text-heading">Invite your first members</h1>
                 <p className="mt-1.5 text-body text-muted">
-                  Add their numbers. You can invite more from your dashboard anytime.
+                  Add their emails. They&apos;ll get an invite to sign up. You can add more from your dashboard anytime.
                 </p>
               </div>
 
@@ -634,16 +634,13 @@ export default function OnboardingPage() {
                   <div key={i} className="flex gap-2 items-start">
                     <div className="flex-1 space-y-2">
                       <Input
-                        type="tel"
-                        placeholder="98765 43210"
-                        value={inv.phone}
-                        onChange={(e) => updateInvitee(i, "phone", e.target.value)}
+                        type="email"
+                        inputMode="email"
+                        placeholder="member@example.com"
+                        value={inv.email}
+                        onChange={(e) => updateInvitee(i, "email", e.target.value)}
                         disabled={step4Loading}
-                        prefix={
-                          <span className="text-body-sm font-medium text-muted select-none">
-                            +91
-                          </span>
-                        }
+                        autoComplete="off"
                       />
                       <Input
                         type="text"

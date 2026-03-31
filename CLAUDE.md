@@ -321,10 +321,34 @@ Finished Sprint 2 (P0.2 Member Management) pending items:
 - **S2.8 / Sprint 7 prep**: Added `Send WhatsApp` link natively using `wa.me/91{phone}`.
 - Updated `MembershipStatus` Enum to include `Deleted` and fixed associated downstream TypeScript errors.
 
-### Up Next (Sprint 4 — P0.4 Attendance)
-1. S4.1 — Take Attendance screen (`/:clubSlug/attendance/take/:batchId`) — bulk present/absent marking
-2. S4.2 — Attendance history (`/:clubSlug/attendance/history`) — by batch + date range
-3. S2.7 — Invite token system (deferred) — club_id + phone + 30-day expiry
+### Session 11 — 2026-03-30
+Record Payment + Sprint 4 (P0.4 Attendance) complete:
+- **Record Payment** — `RecordPaymentModal` + `POST /api/members/[membershipId]/payments`: captures amount/method/date/note, advances `next_due_date` by billing cycle, reactivates overdue/expired membership. Wired into member profile Overview stat card.
+- **S4.1** — Take Attendance: `attendance/take/[batchId]/page.tsx` (SC: batch + active members + today's existing records) + `_components/take-attendance-client.tsx` (per-member present/absent toggle, bulk mark all, progress summary, save → `POST /api/attendance/[batchId]`). API bulk-upserts on `(membership_id, batch_id, date)`.
+- **S4.2** — Attendance History: `attendance/history/page.tsx` (SC: last 30 days, all batches) + `_components/attendance-history-client.tsx` (sessions grouped by date+batch, batch filter dropdown, present/absent counts, mini progress bar). `/attendance` redirects to `/attendance/history`.
+- Fixed `any` violation in member profile page (`as AttendanceStatus`) and route (`updateData` typed as `{ plan_id: string; next_due_date?: string }`).
+
+### Session 12 — 2026-03-30
+Sprint 5 (P0.5 Fee Plans) + Sprint 6 (P0.6 Payments Manual) complete:
+- **Sprint 5** — Already fully built (discovered pre-existing): `plans/page.tsx`, `plans/new/page.tsx`, `plans/[planId]/page.tsx`, `_components/{plans-loader, plans-client, plan-form}.tsx`, `POST /api/plans`, `PUT /api/plans/[planId]`, `DELETE /api/plans/[planId]`. Fixed: removed `updated_at` field from PUT (not in DB type).
+- **Sprint 6** — Payments page: `payments/page.tsx` (SC: overdue memberships + payment history last 90 days) + `_components/payments-client.tsx` (Overdue tab with desktop table + mobile cards + "Record Payment" button wired to RecordPaymentModal; History tab with full payment list). Overdue sorted by days overdue, count badge on tab.
+
+### Session 13 — 2026-03-30
+Sprint 7 (P0.7 Dashboard) complete:
+- **Shared primitives** — `dashboard/_components/dashboard-ui.tsx`: `StatCard` (label/value/sub/accent/action, left border colour accent), `SectionCard` (titled card wrapper with optional header action), `EmptySection`, `DashboardSkeleton` (shimmer grid).
+- **OwnerDashboard** (`owner-dashboard.tsx`) — SC, 4 KPI cards (active members, overdue count, month revenue, batch count), Today's Sessions (attendance CTA or present/absent badge), Overdue Members (top 5, days overdue), Recent Payments (last 5 this month). All sections link to deeper pages.
+- **CoachDashboard** (`coach-dashboard.tsx`) — SC, 3 KPI cards (today's sessions, my members, attendance rate today), Today's Sessions (Take Attendance CTA or edit link + present count), All My Batches (non-today batches).
+- **Dashboard page** (`dashboard/page.tsx`) — calls `getUserProfile()`, branches on `StaffRole`, wraps both views in `<Suspense fallback={<DashboardSkeleton />}>`.
+
+### Session 14 — 2026-03-30
+Sprint 8 (P0.9 Settings + Staff) complete:
+- **Settings** — `settings/page.tsx` (SC: owner-only guard, fetches club profile) + `_components/settings-form.tsx` (client: name/city/phone/category, inline save confirmation). `PATCH /api/clubs/[clubId]/settings`: resolves UUID-or-slug, owner-only, updates clubs row.
+- **Staff** — `staff/page.tsx` (SC: owner-only, lists all club_staff joined with users) + `_components/staff-client.tsx` (staff list with owner/coach badge, Add Coach dialog with phone lookup, Remove confirmation dialog, guards owner + self from removal). `POST /api/clubs/[clubId]/staff`: phone lookup → create coach row, 409 if already staff. `DELETE /api/clubs/[clubId]/staff/[staffId]`: guards owner removal + self-removal.
+
+### Up Next (P0 wrap-up)
+1. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+2. S2.7 — Invite token system (deferred — Sprint 2 carry-over)
+3. Typecheck + lint pass across all new files
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

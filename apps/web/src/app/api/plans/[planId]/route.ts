@@ -96,7 +96,6 @@ export async function PUT(
       name,
       amount_paise,
       billing_cycle,
-      updated_at: new Date().toISOString()
     })
     .eq("id", params.planId)
     .eq("club_id", club.id);

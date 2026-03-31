@@ -1,14 +1,12 @@
 // POST /api/onboarding/invites
 //
 // Step 4 (optional) of the onboarding wizard.
-// Accepts a list of phone numbers to invite as members.
+// Accepts a list of emails to invite as members.
+// Sends a Supabase auth invite email for each address not yet on Zenzo.
+// WhatsApp dispatch via Interakt is wired up in a future sprint.
 //
-// Phase 1 (Sprint 1): validates input and acknowledges the queue.
-// WhatsApp dispatch via Interakt is wired up in Sprint 7.
-// Membership rows are created when invitees sign up via invite link (Sprint 2 — S2.2, S2.7).
-//
-// Body: { club_id, invitees: [{ phone: string, name?: string }] }
-// Returns: { queued: number }
+// Body: { club_id, invitees: [{ email: string, name?: string }] }
+// Returns: { sent: number }
 //
 // Error codes:
 //   400 — missing club_id
@@ -18,19 +16,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 
-type Invitee = { phone: string; name?: string };
+type Invitee = { email: string; name?: string };
 
 type Body = {
   club_id?: string;
   invitees?: Invitee[];
 };
 
-function normalizePhone(v: string): string {
-  const n = v.replace(/[\s-]/g, "");
-  if (n.startsWith("+91")) return n.slice(3);
-  if (n.startsWith("91") && n.length === 12) return n.slice(2);
-  return n;
-}
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
@@ -53,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   // No invitees submitted — nothing to do
   if (!invitees || invitees.length === 0) {
-    return NextResponse.json({ queued: 0 });
+    return NextResponse.json({ sent: 0 });
   }
 
   const admin = createSupabaseAdminClient();
@@ -70,12 +63,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Filter to valid 10-digit Indian numbers only
-  const valid = invitees
-    .map((inv) => ({ ...inv, phone: normalizePhone(inv.phone) }))
-    .filter((inv) => /^\d{10}$/.test(inv.phone));
+  // Filter to non-empty, roughly valid email addresses
+  const valid = invitees.filter((inv) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inv.email.trim()));
 
-  // Sprint 1: invites are acknowledged but not yet dispatched.
-  // WhatsApp sending + membership creation happen in Sprint 7 + Sprint 2.
-  return NextResponse.json({ queued: valid.length });
+  // Send Supabase invite email for each address
+  let sent = 0;
+  await Promise.allSettled(
+    valid.map(async (inv) => {
+      const { error } = await admin.auth.admin.inviteUserByEmail(inv.email.trim(), {
+        redirectTo: `${APP_URL}/auth/callback`,
+        data: { full_name: inv.name?.trim() ?? "" },
+      });
+      if (!error) sent++;
+    })
+  );
+
+  return NextResponse.json({ sent });
 }

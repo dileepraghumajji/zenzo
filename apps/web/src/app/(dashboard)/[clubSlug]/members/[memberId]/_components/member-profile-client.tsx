@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Pencil,
   UserMinus,
+  CreditCard,
 } from "lucide-react";
 import {
   Avatar,
@@ -34,10 +35,16 @@ import {
   DialogContent,
   DialogFooter,
   DialogClose,
+  FormField,
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
   cn,
 } from "@zenzo/ui";
 import { formatCurrency, formatDate } from "@zenzo/utils";
 import { MembershipStatus, AttendanceStatus } from "@zenzo/database/enums";
+import { RecordPaymentModal } from "./record-payment-modal";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +65,7 @@ interface Payment {
 interface MemberDetail {
   userId: string;
   membershipId: string;
+  planId: string | null;
   fullName: string;
   phone: string;
   email: string | null;
@@ -72,9 +80,17 @@ interface MemberDetail {
   allPayments: Payment[];
 }
 
+interface AvailablePlan {
+  id: string;
+  name: string;
+  amount_paise: number;
+  billing_cycle: string;
+}
+
 interface MemberProfileClientProps {
   clubSlug: string;
   member: MemberDetail;
+  availablePlans: AvailablePlan[];
 }
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -83,43 +99,54 @@ const STATUS_CONFIG: Record<
   MembershipStatus,
   { label: string; variant: "success" | "error" | "neutral" | "info" }
 > = {
-  [MembershipStatus.Active]:        { label: "Active",         variant: "success" },
-  [MembershipStatus.Overdue]:       { label: "Overdue",        variant: "error"   },
-  [MembershipStatus.Expired]:       { label: "Expired",        variant: "neutral" },
-  [MembershipStatus.PendingInvite]: { label: "Pending Invite", variant: "info"    },
-  [MembershipStatus.Deleted]:       { label: "Deleted",        variant: "neutral" },
+  [MembershipStatus.Active]: { label: "Active", variant: "success" },
+  [MembershipStatus.Overdue]: { label: "Overdue", variant: "error" },
+  [MembershipStatus.Expired]: { label: "Expired", variant: "neutral" },
+  [MembershipStatus.PendingInvite]: { label: "Pending Invite", variant: "info" },
+  [MembershipStatus.Deleted]: { label: "Deleted", variant: "neutral" },
 };
 
 // ─── MemberProfileClient ───────────────────────────────────────────────────────
 
-export function MemberProfileClient({ clubSlug, member }: MemberProfileClientProps) {
+export function MemberProfileClient({ clubSlug, member, availablePlans }: MemberProfileClientProps) {
   const router = useRouter();
   const statusCfg = STATUS_CONFIG[member.status] || { label: "Deleted", variant: "neutral" };
   const [isDeactivating, setIsDeactivating] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isUpdatingPlan, setIsUpdatingPlan] = React.useState(false);
+  const [isRecordingPayment, setIsRecordingPayment] = React.useState(false);
 
   // Modal states
   const [showDeactivateDealog, setShowDeactivateDialog] = React.useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [showPlanDialog, setShowPlanDialog] = React.useState(false);
+  const [showPaymentModal, setShowPaymentModal] = React.useState(false);
 
-  const performAction = async (actionType: "deactivate" | "delete") => {
+  const [selectedPlanId, setSelectedPlanId] = React.useState(member.planId ?? "");
+
+  const performAction = async (actionType: "deactivate" | "delete" | "update_plan") => {
     try {
       if (actionType === "deactivate") setIsDeactivating(true);
       if (actionType === "delete") setIsDeleting(true);
+      if (actionType === "update_plan") setIsUpdatingPlan(true);
 
       const method = actionType === "delete" ? "DELETE" : "PATCH";
-      const body = actionType === "deactivate" ? JSON.stringify({ action: "deactivate" }) : undefined;
+      let body: any = undefined;
 
-      const res = await fetch(`/api/clubs/${clubSlug}/members/${member.membershipId}/action`, {
+      if (actionType === "deactivate") body = { action: "deactivate" };
+      if (actionType === "update_plan") body = { action: "update_plan", planId: selectedPlanId };
+
+      const res = await fetch(`/api/clubs/${clubSlug}/members/${member.membershipId}`, {
         method,
         headers: { "Content-Type": "application/json" },
-        body,
+        body: body ? JSON.stringify(body) : undefined,
       });
 
       if (!res.ok) throw new Error("Action failed");
 
       setShowDeactivateDialog(false);
       setShowDeleteDialog(false);
+      setShowPlanDialog(false);
       router.refresh(); // Refresh data
     } catch (err) {
       console.error(err);
@@ -127,6 +154,7 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
     } finally {
       setIsDeactivating(false);
       setIsDeleting(false);
+      setIsUpdatingPlan(false);
     }
   };
 
@@ -219,6 +247,16 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
+                  icon={<CreditCard className="size-4" />}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowPlanDialog(true);
+                  }}
+                >
+                  Change Fee Plan
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
                   icon={<UserMinus />}
                   onSelect={(e) => {
                     e.preventDefault();
@@ -270,6 +308,16 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
                   ? formatCurrency(member.planAmountPaise)
                   : undefined
               }
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-primary text-[12px] px-2"
+                  onClick={() => setShowPaymentModal(true)}
+                >
+                  Record Payment
+                </Button>
+              }
             />
             <StatCard
               label="Plan"
@@ -290,7 +338,7 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
                 <p className="text-[12px] font-medium uppercase tracking-[0.04em] text-muted">
                   Recent Payments
                 </p>
-                <button 
+                <button
                   onClick={() => document.querySelector<HTMLButtonElement>('[value="payments"]')?.click()}
                   className="text-[12px] text-primary hover:underline"
                 >
@@ -343,10 +391,10 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
                         {a.batchName ?? "Drop-in"}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Badge 
-                          variant={a.status === AttendanceStatus.Present ? "success" : "neutral"} 
-                          label={a.status} 
-                          size="sm" 
+                        <Badge
+                          variant={a.status === AttendanceStatus.Present ? "success" : "neutral"}
+                          label={a.status}
+                          size="sm"
                         />
                       </td>
                     </tr>
@@ -355,9 +403,9 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
               </table>
             </div>
           ) : (
-             <p className="text-[13px] text-muted text-center py-8">
-               No attendance records in the last 30 days.
-             </p>
+            <p className="text-[13px] text-muted text-center py-8">
+              No attendance records in the last 30 days.
+            </p>
           )}
         </TabsContent>
 
@@ -392,8 +440,8 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
             </div>
           ) : (
             <p className="text-[13px] text-muted text-center py-8">
-               No payment history yet.
-             </p>
+              No payment history yet.
+            </p>
           )}
         </TabsContent>
 
@@ -451,6 +499,54 @@ export function MemberProfileClient({ clubSlug, member }: MemberProfileClientPro
         </DialogContent>
       </Dialog>
 
+      {/* ── Change Plan Dialog ───────────────────────────────────────────── */}
+      <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
+        <DialogContent title="Change Fee Plan">
+          <div className="space-y-4 py-2">
+            <p className="text-[14px] text-muted">
+              Select a new fee plan for <strong>{member.fullName}</strong>.
+            </p>
+            <FormField label="Fee Plan">
+              <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+                <SelectTrigger id="planId" placeholder="Select plan…" />
+                <SelectContent>
+                  {availablePlans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({formatCurrency(p.amount_paise)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              disabled={isUpdatingPlan || !selectedPlanId}
+              onClick={() => performAction("update_plan")}
+            >
+              {isUpdatingPlan ? "Updating..." : "Update Plan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Record Payment Modal ─────────────────────────────────────────── */}
+      {showPaymentModal && (
+        <RecordPaymentModal
+          clubSlug={clubSlug}
+          member={member}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            router.refresh();
+          }}
+        />
+      )}
+
     </div>
   );
 }
@@ -462,19 +558,22 @@ function StatCard({
   value,
   sub,
   className,
+  action,
 }: {
   label: string;
   value: string;
   sub?: string;
   className?: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className={cn("rounded-xl border border-border bg-background p-4", className)}>
+    <div className={cn("relative rounded-xl border border-border bg-background p-4", className)}>
       <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted mb-1">
         {label}
       </p>
       <p className="text-[20px] font-bold text-foreground leading-tight">{value}</p>
       {sub && <p className="text-[12px] text-muted mt-0.5 font-mono">{sub}</p>}
+      {action && <div className="mt-3 pt-2 border-t border-border/50">{action}</div>}
     </div>
   );
 }

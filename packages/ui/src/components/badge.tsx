@@ -7,6 +7,7 @@ export interface BadgeProps {
   variant?: "neutral" | "success" | "warning" | "error" | "info" | "primary";
   size?: "sm" | "md";
   label: string;
+  icon?: React.ReactNode;
   dot?: boolean;
   className?: string;
 }
@@ -61,6 +62,7 @@ export function Badge({
   variant = "neutral",
   size = "md",
   label,
+  icon,
   dot = false,
   className,
 }: BadgeProps) {
@@ -89,6 +91,7 @@ export function Badge({
           aria-hidden="true"
         />
       )}
+      {icon && <span className="shrink-0">{icon}</span>}
       {label}
     </span>
   );

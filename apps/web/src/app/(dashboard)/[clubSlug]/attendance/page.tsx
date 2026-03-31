@@ -1,4 +1,9 @@
-// Phase 1 — Module: Attendance
-export default function AttendancePage() {
-  return <div>Attendance — TODO</div>;
+import { redirect } from "next/navigation";
+
+interface Props {
+  params: { clubSlug: string };
+}
+
+export default function AttendancePage({ params }: Props) {
+  redirect(`/${params.clubSlug}/attendance/history`);
 }

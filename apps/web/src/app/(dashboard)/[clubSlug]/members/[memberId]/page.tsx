@@ -9,7 +9,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { MemberProfileClient } from "./_components/member-profile-client";
-import type { MembershipStatus } from "@zenzo/database/enums";
+import type { MembershipStatus, AttendanceStatus } from "@zenzo/database/enums";
 
 interface Props {
   params: { clubSlug: string; memberId: string };
@@ -36,14 +36,21 @@ export default async function MemberProfilePage({ params }: Props) {
   const { data: membership, error } = await supabase
     .from("club_memberships")
     .select(
-      "id, status, joined_at, next_due_date, users(id, full_name, phone, email), fee_plans(name, amount_paise)"
+      "id, plan_id, status, joined_at, next_due_date, users(id, full_name, phone, email), fee_plans(name, amount_paise)"
     )
     .eq("club_id", club.id)
-    .eq("user_id", memberId)
+    .eq("user_id", params.memberId)
     .is("deleted_at", null)
     .single();
 
   if (error || !membership) notFound();
+
+  // ── Fetch all available plans for this club ────────────────────────────────
+  const { data: availablePlans } = await supabase
+    .from("fee_plans")
+    .select("id, name, amount_paise, billing_cycle")
+    .eq("club_id", club.id)
+    .order("amount_paise");
 
   // ── Fetch batch names ────────────────────────────────────────────────────
   const { data: batchRows } = await supabase
@@ -84,9 +91,11 @@ export default async function MemberProfilePage({ params }: Props) {
   return (
     <MemberProfileClient
       clubSlug={clubSlug}
+      availablePlans={availablePlans ?? []}
       member={{
-        userId:          memberId,
+        userId:          params.memberId,
         membershipId:    membership.id,
+        planId:          membership.plan_id,
         fullName:        user?.full_name ?? "Unknown",
         phone:           user?.phone ?? "",
         email:           user?.email ?? null,
@@ -100,7 +109,7 @@ export default async function MemberProfilePage({ params }: Props) {
         recentAttendance: (attendanceRows ?? []).map((a) => ({
           id: a.id,
           date: a.date,
-          status: a.status as any,
+          status: a.status as AttendanceStatus,
           batchName: a.batches?.name ?? null,
         })),
         allPayments:  (allPayments ?? []).map((p) => ({
