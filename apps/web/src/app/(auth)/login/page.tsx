@@ -73,40 +73,17 @@ function LoginForm() {
         return;
       }
 
-      // Fetch tenantSlug + role now that the session cookie is set
+      // Fetch destination now that the session cookie is set
       const res = await fetch("/api/auth/profile", { method: "POST" });
-
-      if (res.status === 404 || res.status === 400) {
-        // 404 = no profile row (user confirmed email before onboarding)
-        // 400 = profile exists but onboarding not completed
-        // In both cases, send to onboarding to complete setup.
-        router.push("/onboarding");
-        return;
-      }
 
       if (!res.ok) {
         setError("Something went wrong. Please try again.");
         return;
       }
 
-      const { clubs } = (await res.json()) as {
-        clubs: Array<{ slug: string; name: string; role: string }>;
-      };
+      const { destination } = (await res.json()) as { destination: string };
 
-      if (!clubs || clubs.length === 0) {
-        router.push("/onboarding");
-        return;
-      }
-
-      if (clubs.length === 1) {
-        const slug = clubs[0]?.slug;
-        if (slug) {
-          router.push(safeRedirect ?? `/${slug}/dashboard`);
-          return;
-        }
-      }
-
-      router.push(safeRedirect ?? "/clubs");
+      router.push(safeRedirect ?? destination);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -223,6 +200,12 @@ function LoginForm() {
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-brand font-medium hover:underline">
               Create one free
+            </Link>
+          </p>
+
+          <p className="mt-4 text-center text-body-sm text-muted">
+            <Link href="/explore" className="text-brand hover:underline">
+              Explore clubs →
             </Link>
           </p>
 

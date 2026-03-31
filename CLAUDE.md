@@ -345,10 +345,39 @@ Sprint 8 (P0.9 Settings + Staff) complete:
 - **Settings** — `settings/page.tsx` (SC: owner-only guard, fetches club profile) + `_components/settings-form.tsx` (client: name/city/phone/category, inline save confirmation). `PATCH /api/clubs/[clubId]/settings`: resolves UUID-or-slug, owner-only, updates clubs row.
 - **Staff** — `staff/page.tsx` (SC: owner-only, lists all club_staff joined with users) + `_components/staff-client.tsx` (staff list with owner/coach badge, Add Coach dialog with phone lookup, Remove confirmation dialog, guards owner + self from removal). `POST /api/clubs/[clubId]/staff`: phone lookup → create coach row, 409 if already staff. `DELETE /api/clubs/[clubId]/staff/[staffId]`: guards owner removal + self-removal.
 
-### Up Next (P0 wrap-up)
-1. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
-2. S2.7 — Invite token system (deferred — Sprint 2 carry-over)
-3. Typecheck + lint pass across all new files
+### Session 15 — 2026-03-31
+Sprint R (Routing Fix) complete:
+- **R1** — `POST /api/auth/profile` now returns `{ destination }` instead of a clubs array. No-staff users get `{ destination: '/portal' }`. Login page updated to use `destination`. Auth callback redirects no-staff to `/portal`.
+- **R2** — `app/portal/layout.tsx`: auth guard + minimal top bar. `app/portal/page.tsx`: SC with Suspense; shows membership list (name, status, next due date) or empty state with "Check for Invites" + "Create a Club" CTAs.
+- **R3** — Onboarding guard already existed (`useEffect` redirect if `club_staff` row found). No change needed.
+- **R4** — `signup/page.tsx`: added `useSearchParams` for `?token`, calls `POST /api/auth/activate-invite?token=xxx` if present, redirects to `/portal`. Wrapped in `Suspense`. Created stub `api/auth/activate-invite/route.ts` (Sprint T will implement).
+
+### Session 16 — 2026-03-31
+Sprint T (Invite Token System) complete:
+- **T1** — Migration `packages/database/migrations/004_club_invites.sql`: `club_invites` table with token, status, plan_id, batch_id, invited_by, expires_at. Added `ClubInvite` type to `packages/database/src/types/index.ts`.
+- **T2** — Updated `POST /api/members/invite`: when user not found by email, inserts `club_invites` row with UUID token and sends Supabase invite email to `/signup?token={token}`. Returns `{ status: 'invite_sent', inviteId }`.
+- **T3** — Implemented `POST /api/auth/activate-invite`: token-based activation (validates pending + not expired, creates `club_membership` + `member_batches`, marks invite `accepted`) + email sweep mode (activates all pending invites matching user email on signup without a token).
+- **T4** — Built `/portal/invites` page (client): lists pending invites with club name, inviter, plan, batch, expiry. [Accept] calls activate-invite → /portal. [Decline] marks expired. Created `GET /api/portal/invites` + `POST /api/portal/invites/[id]/decline`.
+- **T5** — Updated `POST /api/onboarding/invites`: inserts `club_invites` rows with tokens before sending Supabase invite emails. Links point to `/signup?token={token}`.
+
+### Session 17 — 2026-03-31
+Sprint P (Member Portal) complete:
+- **P1 + P4** — Already done: `/portal` club list page + `/portal/layout.tsx` minimal top bar.
+- **P2** — Built `/portal/[clubSlug]/page.tsx` (SC + Suspense) + `_components/portal-club-client.tsx` (3-tab client: Home, Attendance, Payments). Home tab: attendance this month progress bar, next fee due, last payment, batch schedule. Attendance tab: 90-day calendar heatmap (green=present, red=absent, grey=no class) + monthly summary + streak. Payments tab: next due date + payment history list linking to receipts.
+- **P3** — Built `/portal/[clubSlug]/payments/[paymentId]/page.tsx`: receipt detail (✓ Payment Recorded header, amount, club, member, date, method, plan, reference, note). PDF download stub for Phase 2.
+
+### Session 18 — 2026-03-31
+Sprint E (Explore Clubs) complete:
+- **E1** — `GET /api/clubs/explore`: public endpoint, returns verified+listed clubs. Supports `?q`, `?city`, `?category`, `?page`. Paginated at 20/page.
+- **E2** — `/explore` page: public SC with `SearchBar` + `CategoryChips` client islands (URL-param driven), async `ClubResults` SC, skeleton shimmer, empty state.
+- **E3** — `/clubs/[slug]` public club page: hero (name, category badge, city), About, Plans & Pricing, Schedule (batches with time + days), Coaches list, CTA section (WhatsApp button, Check Invites, Sign Up). `GET /api/clubs/[slug]/public` returns all public club data. Returns 404 for unverified clubs.
+- **E4** — Portal empty state: added third CTA button "Explore Clubs → /explore" below Create a Club.
+- **E5** — Nav links: "Explore clubs" added to landing page nav. "Explore clubs →" link added to login + signup auth cards.
+- Added `description: string | null` to `clubs` DB type.
+
+### Up Next
+1. Sprint N — Notifications via Resend (email transactionals)
+2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

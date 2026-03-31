@@ -1,14 +1,15 @@
 // POST /api/members/invite
 //
-// Single invite flow — S2.2.
-// Looks up user by email. If found, creates an active membership.
-// If not found, sends a Supabase auth invite email and returns { status: 'invite_sent' }.
-// Membership is created when invitee signs up via the invite link (S2.7).
+// Invite a member to a club — S2.2 / Sprint T.
+// Looks up user by email.
+//   - If found: creates an active membership immediately.
+//   - If not found: inserts a club_invites row and sends a Supabase invite email
+//     with the token as a query param. Membership is created on signup via activate-invite.
 //
 // Body: { clubSlug, email, batchId, planId, startDate }
 // Returns:
-//   { status: 'added', membershipId, userId }    — membership created
-//   { status: 'invite_sent' }                    — email invite dispatched
+//   { status: 'added', membershipId, userId }    — membership created immediately
+//   { status: 'invite_sent', inviteId }           — email invite dispatched
 //
 // Error codes:
 //   400 — missing / invalid fields
@@ -19,6 +20,7 @@
 //   500 — DB error
 
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import {
   createSupabaseServerClient,
   createSupabaseAdminClient,
@@ -101,12 +103,38 @@ export async function POST(request: NextRequest) {
     .eq("email", email)
     .maybeSingle();
 
-  // ── 5a. Not on Zenzo — send email invite ─────────────────────────────────────
+  // ── 5a. Not on Zenzo — create invite token + send email ──────────────────────
   if (!invitee) {
+    const token = randomUUID();
+
+    const { data: invite, error: inviteError } = await admin
+      .from("club_invites")
+      .insert({
+        club_id:    club.id,
+        email,
+        token,
+        plan_id:    planId,
+        batch_id:   batchId,
+        invited_by: user.id,
+        status:     "pending",
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (inviteError || !invite) {
+      return NextResponse.json(
+        { error: inviteError?.message ?? "Failed to create invite" },
+        { status: 500 }
+      );
+    }
+
+    // Send Supabase auth invite email — redirects to /signup?token=xxx
     await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${APP_URL}/auth/callback`,
+      redirectTo: `${APP_URL}/signup?token=${token}`,
     });
-    return NextResponse.json({ status: "invite_sent" });
+
+    return NextResponse.json({ status: "invite_sent", inviteId: invite.id });
   }
 
   // ── 5b. Check not already a member ──────────────────────────────────────────
@@ -125,7 +153,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── 6. Create membership ─────────────────────────────────────────────────────
+  // ── 6. Create membership immediately ─────────────────────────────────────────
   const { data: membership, error: membershipError } = await admin
     .from("club_memberships")
     .insert({

@@ -69,6 +69,7 @@ export type Database = {
           terminology: Json;
           owner_id: string;
           verification_status: VerificationStatus;
+          description: string | null;
           listed: boolean;
           created_at: string;
         };
@@ -255,6 +256,52 @@ export type Database = {
             columns: ["batch_id"];
             isOneToOne: false;
             referencedRelation: "batches";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      club_invites: {
+        Row: {
+          id: string;
+          club_id: string;
+          email: string;
+          token: string;
+          plan_id: string | null;
+          batch_id: string | null;
+          invited_by: string | null;
+          status: "pending" | "accepted" | "expired";
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["club_invites"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["club_invites"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "club_invites_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "club_invites_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "fee_plans";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "club_invites_batch_id_fkey";
+            columns: ["batch_id"];
+            isOneToOne: false;
+            referencedRelation: "batches";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "club_invites_invited_by_fkey";
+            columns: ["invited_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           }
         ];

@@ -18,8 +18,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-6">
-            <Link 
-              href="/login" 
+            <Link
+              href="/explore"
+              className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              Explore clubs
+            </Link>
+            <Link
+              href="/login"
               className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
               Sign in

@@ -1,9 +1,8 @@
 // POST /api/onboarding/invites
 //
-// Step 4 (optional) of the onboarding wizard.
-// Accepts a list of emails to invite as members.
-// Sends a Supabase auth invite email for each address not yet on Zenzo.
-// WhatsApp dispatch via Interakt is wired up in a future sprint.
+// Step 4 (optional) of the onboarding wizard — Sprint T updated.
+// Inserts club_invites rows and sends Supabase invite emails with token links.
+// WhatsApp dispatch via Interakt is wired up in Sprint W.
 //
 // Body: { club_id, invitees: [{ email: string, name?: string }] }
 // Returns: { sent: number }
@@ -14,6 +13,7 @@
 //   403 — caller is not staff of this club
 
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type Invitee = { email: string; name?: string };
@@ -64,17 +64,40 @@ export async function POST(request: NextRequest) {
   }
 
   // Filter to non-empty, roughly valid email addresses
-  const valid = invitees.filter((inv) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inv.email.trim()));
+  const valid = invitees.filter((inv) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inv.email.trim())
+  );
 
-  // Send Supabase invite email for each address
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Insert club_invites rows and send invite emails
   let sent = 0;
   await Promise.allSettled(
     valid.map(async (inv) => {
-      const { error } = await admin.auth.admin.inviteUserByEmail(inv.email.trim(), {
-        redirectTo: `${APP_URL}/auth/callback`,
+      const email = inv.email.trim().toLowerCase();
+      const token = randomUUID();
+
+      const { error: insertError } = await admin
+        .from("club_invites")
+        .insert({
+          club_id,
+          email,
+          token,
+          plan_id:    null,
+          batch_id:   null,
+          invited_by: user.id,
+          status:     "pending",
+          expires_at: expiresAt,
+        });
+
+      if (insertError) return;
+
+      const { error: emailError } = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${APP_URL}/signup?token=${token}`,
         data: { full_name: inv.name?.trim() ?? "" },
       });
-      if (!error) sent++;
+
+      if (!emailError) sent++;
     })
   );
 

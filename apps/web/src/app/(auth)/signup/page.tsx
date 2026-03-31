@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, AlertCircle, Mail } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
@@ -100,10 +100,13 @@ function EmailSentScreen({ email }: { email: string }) {
   );
 }
 
-// ─── Signup page ───────────────────────────────────────────────────────────────
+// ─── Signup form ───────────────────────────────────────────────────────────────
+// Separate component so useSearchParams() is inside a Suspense boundary.
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("token");
 
   const [fullName, setFullName]         = useState("");
   const [phone, setPhone]               = useState("");
@@ -201,9 +204,16 @@ export default function SignupPage() {
         return;
       }
 
+      // If user arrived via an invite link, activate the membership.
+      if (inviteToken) {
+        await fetch(`/api/auth/activate-invite?token=${encodeURIComponent(inviteToken)}`, {
+          method: "POST",
+        });
+      }
+
       // The handle_new_user() trigger auto-creates the users row.
-      // Just redirect to onboarding.
-      router.push("/onboarding");
+      // Members and new users go to /portal; owners start onboarding from there.
+      router.push("/portal");
     } catch {
       setErrors({ form: "Network error. Please try again." });
     } finally {
@@ -369,6 +379,12 @@ export default function SignupPage() {
 
           </form>
 
+          <p className="mt-4 text-center text-body-sm text-muted">
+            <Link href="/explore" className="text-brand hover:underline">
+              Explore clubs →
+            </Link>
+          </p>
+
           <div className="mt-6 pt-5 border-t border-border space-y-3">
             <Button
               variant="secondary"
@@ -390,5 +406,17 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+// Suspense wrapper required by Next.js 14: useSearchParams() must be inside
+// a Suspense boundary during static rendering.
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }

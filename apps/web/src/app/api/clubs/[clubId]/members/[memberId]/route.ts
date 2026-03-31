@@ -139,7 +139,6 @@ export async function DELETE(
   const { error } = await supabase
     .from("club_memberships")
     .update({
-      status: MembershipStatus.Deleted,
       deleted_at: new Date().toISOString(),
     })
     .eq("id", params.memberId)
