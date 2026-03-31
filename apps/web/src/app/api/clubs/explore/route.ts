@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { VerificationStatus } from "@zenzo/database/enums";
+import { ClubCategory, VerificationStatus } from "@zenzo/database/enums";
 
 const PAGE_SIZE = 20;
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     .order("name", { ascending: true });
 
   if (city)     query = query.ilike("city", `%${city}%`);
-  if (category) query = query.eq("business_type", category);
+  if (category) query = query.eq("business_type", category as ClubCategory);
   if (q)        query = query.ilike("name", `%${q}%`);
 
   const { data, error, count } = await query;
