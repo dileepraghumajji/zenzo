@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
       listed: false,
       phone: null,
       logo_url: null,
+      description: null,
     })
     .select("id, slug")
     .single();
