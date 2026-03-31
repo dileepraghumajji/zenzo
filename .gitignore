@@ -39,3 +39,8 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code / AI agent tooling (user-specific, not project config)
+.claude/
+.agents/
+skills-lock.json

@@ -1,1415 +1,923 @@
-# Zenzo — Feature Specification (Production Grade)
-
-> **This is the source of truth for what we build, in what order, and exactly how.**
-> Read CLAUDE.md first, then this file, then the relevant screen spec in docs/design/.
-> Start every dev session: `Read CLAUDE.md + FEATURES.md, then build [feature].`
+# Zenzo — Feature Specification
+*Source of truth for implementation. Every feature, every flow, every edge case.*
+*Locked: March 2026. Reflects new two-sided platform philosophy (v2.1).*
 
 ---
 
-## CEO/CTO Review Notes (Applied to this doc)
+## Mental Model — The 6 Core Entities
 
-**What was added vs temp-features.md:**
-1. Database migration order with full schema (not just hints)
-2. Supabase RLS policies — concrete, copy-paste ready
-3. API route map — every Next.js route handler needed
-4. Acceptance criteria per feature (definition of done)
-5. Validation rules (field-level, API-level)
-6. Integration specs (Interakt, Razorpay webhook)
-7. Implementation dependencies (what blocks what)
-8. Error handling patterns
-9. Member portal token spec
-10. Guardian model elevated to P0 (was P1 — risk if deferred)
+```
+users           One Zenzo account per person. Works across all clubs.
+clubs           Each club/tenant. Has one owner, many staff, many members.
+club_staff      Connects a user to a club with a role (owner or coach).
+club_memberships Connects a user to a club as a member. Has a status lifecycle.
+batches         Scheduling groups within a club (e.g., "Morning Batch").
+member_batches  Many-to-many join: which members are in which batches.
+```
 
-**Strategic decisions confirmed:**
-- Horizontal-first schema. No gym-specific columns. Labels via terminology jsonb.
-- Guardian in P0 — dance academies + music schools = child students on day 1.
-- Phone = primary identifier. Unique per tenant, not globally.
-- All money in paise. Never store floats for currency.
-- RLS is the security layer. UI hiding is UX, not security.
+A person can be:
+- An `owner` (via `club_staff`) of Club A
+- A `coach` (via `club_staff`) at Club B
+- A member (via `club_memberships`) of Club C
+All from the same Zenzo account.
 
 ---
 
-## Mental Model
+## Database Schema
 
-Five universal entities. Everything else is config or UI.
-
+### Migration Order
 ```
-Tenant      → the business (gym, dojo, dance school)
-Member      → the person who attends (may be a child; guardian is payer)
-Session     → a scheduled group or 1-on-1 class
-Attendance  → one row per member per session (present/absent/unmarked)
-Plan        → a billing contract (monthly, pack, per-session, etc.)
-Payment     → a recorded transaction against a plan
-Milestone   → belt/grade/level progression (optional module)
-```
-
----
-
-## Database Schema & Migration Order
-
-### Migration Order (STRICT — do not reorder)
-
-```
-001_tenants
-002_profiles (depends on auth.users)
-003_sessions (depends on tenants)
-004_members (depends on tenants, profiles)
-005_member_sessions (join table — member ↔ session)
-006_attendance (depends on members, sessions)
-007_plans (depends on tenants)
-008_member_plans (join — member ↔ plan, tracks active plan per member)
-009_payments (depends on members, plans, tenants)
-010_milestones (depends on tenants)
-011_member_milestones (depends on members, milestones)
-012_guardians (depends on members)
-013_communications_log (depends on tenants, members)
+001_create_users.sql
+002_create_clubs.sql
+003_create_club_staff.sql
+004_create_fee_plans.sql
+005_create_club_memberships.sql
+006_create_batches.sql
+007_create_member_batches.sql
+008_create_attendance_records.sql
+009_create_payments.sql
+010_create_progression_levels.sql
+011_create_promotions.sql
+012_create_member_current_level.sql
+013_create_notifications_log.sql
+014_create_notification_settings.sql
 ```
 
----
-
-### 001 — tenants
+### users
 ```sql
-create table tenants (
-  id           uuid primary key default gen_random_uuid(),
-  slug         text unique not null,          -- URL slug e.g. 'ravis-fitness'
-  name         text not null,
-  business_type text not null default 'gym',  -- gym|martial_arts|dance|music|tuition|yoga|other
-  city         text,
-  phone        text,
-  logo_url     text,
-  terminology  jsonb not null default '{
-    "member": "Member",
-    "session": "Batch",
-    "instructor": "Coach",
-    "milestone": "Belt",
-    "show_milestones": true
-  }'::jsonb,
-  plan         text not null default 'trial', -- trial|starter|growth|pro
-  created_at   timestamptz default now()
+CREATE TABLE users (
+  id              UUID PRIMARY KEY,  -- Supabase Auth UID
+  full_name       TEXT NOT NULL,
+  phone           TEXT UNIQUE NOT NULL,  -- +91XXXXXXXXXX format
+  email           TEXT UNIQUE NOT NULL,
+  avatar_url      TEXT,
+  is_admin        BOOLEAN DEFAULT FALSE,  -- Zenzo platform admin only
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
-
--- RLS
-alter table tenants enable row level security;
-create policy "tenant members can read own tenant"
-  on tenants for select
-  using (id in (
-    select tenant_id from profiles where id = auth.uid()
-  ));
-create policy "owner can update own tenant"
-  on tenants for update
-  using (id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
 ```
 
----
-
-### 002 — profiles
+### clubs
 ```sql
-create type user_role as enum ('owner', 'staff', 'member');
+CREATE TABLE clubs (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug                    TEXT UNIQUE NOT NULL,  -- e.g., 'ravis-fitness'
+  name                    TEXT NOT NULL,
+  business_type           TEXT NOT NULL,  -- 'gym' | 'martial_arts' | 'dance' | 'yoga' | 'other'
+  city                    TEXT NOT NULL,
+  phone                   TEXT NOT NULL,
+  logo_url                TEXT,
+  description             TEXT,
+  verification_status     TEXT DEFAULT 'pending',  -- 'pending' | 'verified' | 'rejected'
+  verification_photo_url  TEXT,
+  listed                  BOOLEAN DEFAULT FALSE,  -- true only after verification
 
-create table profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  tenant_id    uuid not null references tenants(id) on delete cascade,
-  role         user_role not null default 'member',
-  full_name    text not null,
-  phone        text,
-  email        text,
-  created_at   timestamptz default now()
+  -- Billing configuration
+  billing_cycle_type      TEXT DEFAULT 'doj',  -- 'doj' (date-of-joining) | 'calendar' (1st of month)
+
+  -- Trial configuration
+  trial_enabled           BOOLEAN DEFAULT FALSE,
+  trial_price_paise       INTEGER DEFAULT 0,  -- 0 = free
+  trial_duration_days     INTEGER DEFAULT 1,
+  max_trials_per_user     INTEGER DEFAULT 1,
+
+  -- Terminology customization
+  term_member             TEXT DEFAULT 'Member',
+  term_batch              TEXT DEFAULT 'Batch',
+  term_progression        TEXT DEFAULT 'Level',
+  show_progression        BOOLEAN DEFAULT FALSE,
+
+  owner_id                UUID REFERENCES users(id) NOT NULL,
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ DEFAULT NOW()
 );
-
-create index on profiles(tenant_id);
-create index on profiles(tenant_id, role);
-
--- RLS
-alter table profiles enable row level security;
-create policy "users can read profiles in own tenant"
-  on profiles for select
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid()
-  ));
-create policy "owner/staff can insert profiles"
-  on profiles for insert
-  with check (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "owner can update profiles"
-  on profiles for update
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
 ```
 
----
-
-### 003 — sessions
+### club_staff
 ```sql
-create type session_type as enum ('group', 'one_on_one');
-create type day_of_week as enum ('mon','tue','wed','thu','fri','sat','sun');
+CREATE TABLE club_staff (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id     UUID REFERENCES clubs(id) NOT NULL,
+  user_id     UUID REFERENCES users(id) NOT NULL,
+  role        TEXT NOT NULL,  -- 'owner' | 'coach'
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
 
-create table sessions (
-  id             uuid primary key default gen_random_uuid(),
-  tenant_id      uuid not null references tenants(id) on delete cascade,
-  name           text not null,
-  session_type   session_type not null default 'group',
-  start_time     time not null,              -- e.g. 06:00:00
-  end_time       time not null,
-  days           day_of_week[] not null,     -- e.g. {mon,tue,wed,thu,fri}
-  instructor_id  uuid references profiles(id) on delete set null,
-  max_capacity   int,
-  is_active      boolean not null default true,
-  created_at     timestamptz default now()
+  UNIQUE(club_id, user_id, role)
 );
-
-create index on sessions(tenant_id);
-create index on sessions(instructor_id);
-
--- RLS
-alter table sessions enable row level security;
-create policy "tenant members can read sessions"
-  on sessions for select
-  using (tenant_id in (select tenant_id from profiles where id = auth.uid()));
-create policy "owner/staff can manage sessions"
-  on sessions for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
 ```
+*One user can be coach at multiple clubs (shared coaching). The owner is always present as `role = 'owner'` in this table.*
 
----
-
-### 004 — members
+### fee_plans
 ```sql
-create type member_status as enum ('active', 'inactive', 'suspended');
-create type gender_type as enum ('male', 'female', 'other');
-
-create table members (
-  id                  uuid primary key default gen_random_uuid(),
-  tenant_id           uuid not null references tenants(id) on delete cascade,
-  profile_id          uuid references profiles(id) on delete set null, -- null for minors
-  guardian_id         uuid references members(id) on delete set null,  -- null for adults
-  full_name           text not null,
-  phone               text,             -- null for children (guardian receives WhatsApp)
-  email               text,
-  date_of_birth       date,
-  gender              gender_type,
-  emergency_contact_name  text,
-  emergency_contact_phone text,
-  status              member_status not null default 'active',
-  joined_at           date not null default current_date,
-  notes               text,
-  created_at          timestamptz default now(),
-
-  -- phone unique per tenant (not globally)
-  constraint members_phone_tenant_unique unique (tenant_id, phone)
+-- Must be created before club_memberships (FK dependency)
+CREATE TABLE fee_plans (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id         UUID REFERENCES clubs(id) NOT NULL,
+  name            TEXT NOT NULL,  -- e.g., 'Monthly Plan'
+  amount_paise    INTEGER NOT NULL,  -- ₹1 = 100 paise. ₹1,500 stored as 150000.
+  billing_cycle   TEXT NOT NULL,  -- 'monthly' | 'quarterly' | 'half_yearly' | 'annual' | 'per_session'
+  description     TEXT,
+  deleted_at      TIMESTAMPTZ,  -- soft delete
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
-
-create index on members(tenant_id);
-create index on members(tenant_id, status);
-create index on members(guardian_id);
-
--- RLS
-alter table members enable row level security;
-create policy "owner/staff can manage members"
-  on members for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "member can read own record"
-  on members for select
-  using (profile_id = auth.uid());
 ```
 
----
-
-### 005 — member_sessions (join table)
+### club_memberships
 ```sql
-create table member_sessions (
-  id           uuid primary key default gen_random_uuid(),
-  member_id    uuid not null references members(id) on delete cascade,
-  session_id   uuid not null references sessions(id) on delete cascade,
-  tenant_id    uuid not null references tenants(id) on delete cascade,
-  joined_at    date not null default current_date,
-  unique(member_id, session_id)
+CREATE TABLE club_memberships (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id         UUID REFERENCES clubs(id) NOT NULL,
+  user_id         UUID REFERENCES users(id) NOT NULL,
+  plan_id         UUID REFERENCES fee_plans(id),  -- nullable before plan assigned
+  status          TEXT DEFAULT 'pending_invite',
+                  -- 'pending_invite' | 'active' | 'overdue' | 'expired' | 'deleted'
+  joined_at       TIMESTAMPTZ,  -- set when status first becomes 'active'
+  plan_start_date DATE,
+  next_due_date   DATE,
+  expires_at      DATE,
+  deleted_at      TIMESTAMPTZ,  -- soft delete
+  invite_token    TEXT,
+  invite_sent_at  TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(club_id, user_id)  -- one membership per club per user
 );
-
-create index on member_sessions(session_id);
-create index on member_sessions(member_id);
-
--- RLS (inherit from sessions access)
-alter table member_sessions enable row level security;
-create policy "owner/staff can manage member_sessions"
-  on member_sessions for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
 ```
 
----
-
-### 006 — attendance
+### batches
 ```sql
-create type attendance_status as enum ('present', 'absent', 'unmarked');
-
-create table attendance (
-  id           uuid primary key default gen_random_uuid(),
-  tenant_id    uuid not null references tenants(id) on delete cascade,
-  member_id    uuid not null references members(id) on delete cascade,
-  session_id   uuid not null references sessions(id) on delete cascade,
-  date         date not null,
-  status       attendance_status not null default 'unmarked',
-  marked_by    uuid references profiles(id) on delete set null,
-  marked_at    timestamptz,
-  created_at   timestamptz default now(),
-
-  unique(member_id, session_id, date)
+CREATE TABLE batches (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id       UUID REFERENCES clubs(id) NOT NULL,
+  name          TEXT NOT NULL,
+  start_time    TIME NOT NULL,
+  end_time      TIME NOT NULL,
+  days          TEXT[] NOT NULL,  -- e.g., ARRAY['mon','tue','wed','thu','fri']
+  coach_id      UUID REFERENCES users(id),  -- nullable (unassigned)
+  max_capacity  INTEGER,  -- nullable (unlimited)
+  description   TEXT,
+  deleted_at    TIMESTAMPTZ,  -- soft delete
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
-
-create index on attendance(tenant_id, date);
-create index on attendance(member_id);
-create index on attendance(session_id, date);
-
--- RLS
-alter table attendance enable row level security;
-create policy "owner/staff can manage attendance"
-  on attendance for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "member can read own attendance"
-  on attendance for select
-  using (member_id in (
-    select id from members where profile_id = auth.uid()
-  ));
 ```
 
----
-
-### 007 — plans
+### member_batches
 ```sql
-create type billing_type as enum (
-  'monthly', 'quarterly', 'half_yearly', 'annual',
-  'per_session', 'session_pack', 'term', 'drop_in'
+CREATE TABLE member_batches (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  membership_id UUID REFERENCES club_memberships(id) NOT NULL,
+  batch_id      UUID REFERENCES batches(id) NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(membership_id, batch_id)
 );
-
-create table plans (
-  id               uuid primary key default gen_random_uuid(),
-  tenant_id        uuid not null references tenants(id) on delete cascade,
-  name             text not null,
-  billing_type     billing_type not null default 'monthly',
-  amount_paise     int not null,           -- ALWAYS in paise. ₹1 = 100.
-  session_credits  int,                    -- only for session_pack type
-  duration_days    int,                    -- null for per_session/drop_in
-  description      text,
-  is_active        boolean not null default true,
-  created_at       timestamptz default now()
-);
-
-create index on plans(tenant_id);
-
--- RLS
-alter table plans enable row level security;
-create policy "tenant members can read plans"
-  on plans for select
-  using (tenant_id in (select tenant_id from profiles where id = auth.uid()));
-create policy "owner can manage plans"
-  on plans for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
 ```
 
----
-
-### 008 — member_plans
+### attendance_records
 ```sql
-create table member_plans (
-  id               uuid primary key default gen_random_uuid(),
-  tenant_id        uuid not null references tenants(id) on delete cascade,
-  member_id        uuid not null references members(id) on delete cascade,
-  plan_id          uuid not null references plans(id),
-  start_date       date not null,
-  end_date         date,                   -- null for per_session/drop_in
-  next_due_date    date,
-  credits_remaining int,                   -- for session_pack; null otherwise
-  is_active        boolean not null default true,
-  created_at       timestamptz default now()
+CREATE TABLE attendance_records (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id       UUID REFERENCES clubs(id) NOT NULL,  -- denormalized for RLS
+  membership_id UUID REFERENCES club_memberships(id) NOT NULL,
+  batch_id      UUID REFERENCES batches(id) NOT NULL,
+  date          DATE NOT NULL,
+  status        TEXT NOT NULL,  -- 'present' | 'absent'
+  is_drop_in    BOOLEAN DEFAULT FALSE,  -- true if member not assigned to this batch
+  marked_by     UUID REFERENCES users(id) NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(membership_id, batch_id, date)  -- one record per member per batch per day
 );
-
-create index on member_plans(member_id);
-create index on member_plans(tenant_id, next_due_date);  -- for overdue queries
-
--- RLS
-alter table member_plans enable row level security;
-create policy "owner/staff can manage member_plans"
-  on member_plans for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "member can read own plan"
-  on member_plans for select
-  using (member_id in (select id from members where profile_id = auth.uid()));
 ```
 
----
-
-### 009 — payments
+### payments
 ```sql
-create type payment_method as enum ('cash', 'upi', 'bank_transfer', 'online', 'other');
-create type payment_status as enum ('completed', 'pending', 'failed', 'refunded');
-
-create table payments (
-  id               uuid primary key default gen_random_uuid(),
-  tenant_id        uuid not null references tenants(id) on delete cascade,
-  member_id        uuid not null references members(id) on delete cascade,
-  member_plan_id   uuid references member_plans(id),
-  amount_paise     int not null,
-  payment_method   payment_method not null,
-  payment_status   payment_status not null default 'completed',
-  payment_date     date not null default current_date,
-  reference        text,                   -- UPI ref, Razorpay payment ID, etc.
-  razorpay_order_id text,
-  razorpay_payment_id text,
-  notes            text,
-  receipt_sent     boolean not null default false,
-  recorded_by      uuid references profiles(id),
-  created_at       timestamptz default now()
+CREATE TABLE payments (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id       UUID REFERENCES clubs(id) NOT NULL,  -- denormalized for RLS
+  membership_id UUID REFERENCES club_memberships(id) NOT NULL,
+  amount_paise  INTEGER NOT NULL,
+  method        TEXT NOT NULL,  -- 'cash' | 'upi' | 'bank_transfer' | 'other'
+  payment_date  DATE NOT NULL,
+  reference     TEXT,  -- optional note or UPI txn ID
+  recorded_by   UUID REFERENCES users(id) NOT NULL,
+  receipt_sent  BOOLEAN DEFAULT FALSE,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
 );
-
-create index on payments(tenant_id, payment_date);
-create index on payments(member_id);
-create index on payments(tenant_id, payment_status);
-
--- RLS
-alter table payments enable row level security;
-create policy "owner can manage payments"
-  on payments for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
-create policy "staff can insert payments"
-  on payments for insert
-  with check (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "member can read own payments"
-  on payments for select
-  using (member_id in (select id from members where profile_id = auth.uid()));
 ```
 
----
-
-### 010 — milestones
+### progression_levels
 ```sql
-create type milestone_type as enum ('ordered_sequence', 'exam_based', 'free_form');
+CREATE TABLE progression_levels (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id       UUID REFERENCES clubs(id) NOT NULL,
+  name          TEXT NOT NULL,  -- e.g., 'Yellow Belt', 'Grade 2'
+  display_order INTEGER NOT NULL,
+  emoji         TEXT,  -- e.g., '🟡'
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
 
-create table milestones (
-  id            uuid primary key default gen_random_uuid(),
-  tenant_id     uuid not null references tenants(id) on delete cascade,
-  name          text not null,             -- e.g. 'White Belt', 'Grade 1'
-  level_order   int not null default 0,   -- for ordered_sequence sorting
-  color_hex     text,                      -- badge colour in UI e.g. '#FFFFFF'
-  milestone_type milestone_type not null default 'ordered_sequence',
-  created_at    timestamptz default now()
+  UNIQUE(club_id, display_order)
 );
-
-create index on milestones(tenant_id, level_order);
-
--- RLS
-alter table milestones enable row level security;
-create policy "tenant members can read milestones"
-  on milestones for select
-  using (tenant_id in (select tenant_id from profiles where id = auth.uid()));
-create policy "owner can manage milestones"
-  on milestones for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
 ```
 
----
-
-### 011 — member_milestones
+### promotions
 ```sql
-create table member_milestones (
-  id            uuid primary key default gen_random_uuid(),
-  tenant_id     uuid not null references tenants(id) on delete cascade,
-  member_id     uuid not null references members(id) on delete cascade,
-  milestone_id  uuid not null references milestones(id),
-  achieved_at   date not null default current_date,
-  notes         text,
-  promoted_by   uuid references profiles(id),
-  created_at    timestamptz default now()
+CREATE TABLE promotions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id           UUID REFERENCES clubs(id) NOT NULL,
+  membership_id     UUID REFERENCES club_memberships(id) NOT NULL,
+  from_level_id     UUID REFERENCES progression_levels(id),  -- null for first promotion
+  to_level_id       UUID REFERENCES progression_levels(id) NOT NULL,
+  promoted_on       DATE NOT NULL,
+  notes             TEXT,
+  promoted_by       UUID REFERENCES users(id) NOT NULL,
+  notification_sent BOOLEAN DEFAULT FALSE,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
 );
-
-create index on member_milestones(member_id);
-
--- RLS
-alter table member_milestones enable row level security;
-create policy "owner/staff can manage member_milestones"
-  on member_milestones for all
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role in ('owner','staff')
-  ));
-create policy "member can read own milestones"
-  on member_milestones for select
-  using (member_id in (select id from members where profile_id = auth.uid()));
 ```
 
----
-
-### 012 — member_portal_tokens
+### member_current_level
 ```sql
--- Token-gated access for member portal (/m/:token)
--- No login required — URL contains a secure token
-create table member_portal_tokens (
-  id            uuid primary key default gen_random_uuid(),
-  tenant_id     uuid not null references tenants(id) on delete cascade,
-  member_id     uuid not null references members(id) on delete cascade,
-  token         text unique not null default encode(gen_random_bytes(32), 'hex'),
-  expires_at    timestamptz not null default now() + interval '30 days',
-  created_at    timestamptz default now()
+-- Denormalized for quick lookups; updated on each promotion
+CREATE TABLE member_current_level (
+  membership_id UUID REFERENCES club_memberships(id) PRIMARY KEY,
+  level_id      UUID REFERENCES progression_levels(id) NOT NULL,
+  since_date    DATE NOT NULL
 );
-
-create index on member_portal_tokens(token);  -- fast lookup by token
-
--- No RLS needed — token IS the auth. Accessed via service role in API route.
 ```
 
----
-
-### 013 — communications_log
+### notifications_log
 ```sql
-create type comm_type as enum (
-  'payment_reminder', 'payment_receipt', 'welcome',
-  'milestone_congrats', 'attendance_alert', 'custom'
+CREATE TABLE notifications_log (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id           UUID REFERENCES clubs(id) NOT NULL,
+  recipient_user_id UUID REFERENCES users(id) NOT NULL,
+  type              TEXT NOT NULL,
+    -- 'payment_reminder' | 'payment_receipt' | 'welcome' | 'promotion'
+    -- | 'attendance_alert' | 'expiry_warning' | 'invite'
+  channel           TEXT NOT NULL,  -- 'whatsapp' | 'email' | 'push'
+  status            TEXT NOT NULL,  -- 'sent' | 'delivered' | 'failed'
+  failure_reason    TEXT,
+  message_preview   TEXT,  -- truncated content for history view
+  sent_at           TIMESTAMPTZ DEFAULT NOW()
 );
-create type comm_status as enum ('queued', 'sent', 'delivered', 'failed');
+```
 
-create table communications_log (
-  id            uuid primary key default gen_random_uuid(),
-  tenant_id     uuid not null references tenants(id) on delete cascade,
-  member_id     uuid references members(id) on delete set null,
-  phone         text not null,
-  comm_type     comm_type not null,
-  message_body  text not null,
-  status        comm_status not null default 'queued',
-  interakt_msg_id text,                    -- returned by Interakt API
-  error_reason  text,
-  sent_at       timestamptz,
-  created_at    timestamptz default now()
+### notification_settings
+```sql
+CREATE TABLE notification_settings (
+  club_id             UUID REFERENCES clubs(id) PRIMARY KEY,
+  payment_reminder    BOOLEAN DEFAULT TRUE,
+  payment_receipt     BOOLEAN DEFAULT TRUE,
+  welcome_message     BOOLEAN DEFAULT TRUE,
+  promotion_congrats  BOOLEAN DEFAULT TRUE,
+  attendance_alert    BOOLEAN DEFAULT TRUE,
+  expiry_warning      BOOLEAN DEFAULT TRUE
 );
-
-create index on communications_log(tenant_id, created_at desc);
-create index on communications_log(member_id);
-
--- RLS
-alter table communications_log enable row level security;
-create policy "owner can read comms log"
-  on communications_log for select
-  using (tenant_id in (
-    select tenant_id from profiles where id = auth.uid() and role = 'owner'
-  ));
 ```
 
 ---
 
-## P0 — Must Ship on Launch Day
+## RLS Policies
 
-> P0 = nothing works without these. Block everything else until done.
-
----
-
-### P0.1 — Auth & Onboarding
-
-**Implementation order:** Sign up → OTP → Tenant creation → Onboarding wizard → Dashboard
-
-#### Sign Up
-**Route:** `POST /api/auth/signup`
-**Fields:** full_name*, phone* (+91 prefix, 10 digits), email*, password* (min 8 chars)
-**Flow:**
-1. Create `auth.users` via Supabase Auth (`supabase.auth.signUp`)
-2. Trigger sends OTP to phone (Supabase Phone Auth or custom via SMS gateway)
-3. On OTP verify → create `profiles` row (tenant_id is null until onboarding completes)
-4. Redirect → `/onboarding`
-
-**Validation:**
-- Phone: strip spaces/dashes, must be 10 digits after +91
-- Email: standard format check
-- Password: min 8 chars
-- Phone uniqueness: checked against `profiles.phone` globally (not per-tenant for auth)
-
-**Acceptance criteria:**
-- [ ] User receives OTP on phone within 10 seconds
-- [ ] Duplicate phone shows "Phone already registered" with link to login
-- [ ] Failed OTP shows "Invalid code. Try again." (max 3 attempts, then resend)
-- [ ] After verify, user lands on `/onboarding` with session active
-
-#### Login
-**Route:** Supabase Auth (`supabase.auth.signInWithPassword`)
-**Fields:** phone or email (single field, auto-detect: contains @ = email), password
-**Flow:**
-1. Detect if input is email or phone
-2. `supabase.auth.signInWithPassword({ email, password })`
-3. On success → redirect to `/:tenantSlug/dashboard`
-4. If profile has no tenant (incomplete onboarding) → redirect to `/onboarding`
-
-**Acceptance criteria:**
-- [ ] Login with phone works (e.g. "9876543210" maps to profile)
-- [ ] Login with email works
-- [ ] Wrong credentials → generic toast "Invalid phone/email or password" (no specifics)
-- [ ] Successful login → always lands on dashboard, never login again
-
-#### Onboarding Wizard (5 steps)
-**Route:** `/onboarding` (protected, requires auth, no tenant yet)
-
-**Step 1 — Business Type** (`/onboarding?step=1`)
-- Card grid: Gym, Martial Arts, Dance Academy, Music School, Tuition Centre, Yoga, Other
-- On select: store `business_type` in local state
-- "Other" shows free text input for custom label
-- Auto-sets terminology defaults based on type
-
-**Step 2 — Studio Setup** (`/onboarding?step=2`)
-- Fields: business_name*, slug* (auto-generated from name, editable, real-time availability check via `GET /api/tenants/check-slug?slug=xxx`), city
-- On next: create `tenants` row + update `profiles.tenant_id`
-
-**Step 3 — First Session** (`/onboarding?step=3`, skippable)
-- Fields: name, start_time, end_time, days (multi-select)
-- Pre-filled: "Morning Batch", 06:00, 07:30, Mon–Fri
-- On next: create `sessions` row if filled
-
-**Step 4 — Add Members** (`/onboarding?step=4`, skippable)
-- Quick-add form: name + phone (repeat)
-- Members appear in a preview list as added
-- On next: bulk create `members` rows
-
-**Step 5 — Completion**
-- Redirect → `/:tenantSlug/dashboard`
-- Confetti burst (300ms CSS animation)
-- Dashboard shows "You're all set!" banner (dismissible, stored in localStorage)
-
-**Acceptance criteria:**
-- [ ] Steps 1–3 are required. Steps 4–5 are skippable.
-- [ ] Slug availability check debounced 500ms, shows ✓ Available / ✗ Taken
-- [ ] Incomplete onboarding (navigating away at step 2) → resumes on next login
-- [ ] Full onboarding completable in under 5 minutes with pre-filled defaults
-
----
-
-### P0.2 — Member Management
-
-**Routes:**
-```
-GET    /api/[tenantSlug]/members              → list (paginated, search, filter)
-POST   /api/[tenantSlug]/members              → create
-GET    /api/[tenantSlug]/members/:id          → get one
-PUT    /api/[tenantSlug]/members/:id          → update
-DELETE /api/[tenantSlug]/members/:id          → soft delete (set status=inactive)
-```
-
-**Page routes:**
-```
-/:tenantSlug/members                          → Member list
-/:tenantSlug/members/new                      → Add member form
-/:tenantSlug/members/:id                      → Member profile
-/:tenantSlug/members/:id/edit                 → Edit member
-```
-
-**Add Member form — required fields:** full_name, phone (if adult), session_id, plan_id
-**Add Member form — optional fields:** email, date_of_birth, gender, emergency_contact_name, emergency_contact_phone, guardian_id (for minors), notes
-
-**Guardian flow (P0 — not P1):**
-- When adding a member: toggle "This is a child/minor"
-- If minor: phone field becomes optional, guardian picker appears
-- Guardian: search existing members by phone or add new guardian inline
-- Guardian phone = WhatsApp recipient for all communications about this child
-- `members.guardian_id` → FK to another member record
-
-**Validation:**
-- phone: unique per tenant (check `members_phone_tenant_unique` constraint)
-- phone required unless `guardian_id` is set (children may not have their own phone)
-- full_name: non-empty, 2–100 chars
-- start_date: cannot be future date
-
-**Acceptance criteria:**
-- [ ] Adding member with duplicate phone shows "Phone already registered for [Name]"
-- [ ] Member appears in list immediately after add
-- [ ] WhatsApp welcome sent (if toggled) within 5 seconds of save
-- [ ] Soft delete: member disappears from active list, data retained, no FK violations
-- [ ] Member list search filters on name and phone, debounced 300ms, <500ms response
-
----
-
-### P0.3 — Session Management
-
-**Routes:**
-```
-GET    /api/[tenantSlug]/sessions             → list
-POST   /api/[tenantSlug]/sessions             → create
-GET    /api/[tenantSlug]/sessions/:id         → get one
-PUT    /api/[tenantSlug]/sessions/:id         → update
-DELETE /api/[tenantSlug]/sessions/:id         → delete (block if has members)
-POST   /api/[tenantSlug]/sessions/:id/members → add member to session
-DELETE /api/[tenantSlug]/sessions/:id/members/:memberId → remove member
-```
-
-**Validation:**
-- end_time must be after start_time
-- days: at least 1 day required
-- Cannot delete session with active member_sessions (API returns 409 with message)
-
-**Acceptance criteria:**
-- [ ] Session card shows: name, timing, days, member count, avg attendance this month
-- [ ] Instructor assignment shows staff only (not owners, not members)
-- [ ] Deleting session with members → error "Remove all members from this session first"
-
----
-
-### P0.4 — Attendance (THE ritual screen)
-
-**Routes:**
-```
-GET  /api/[tenantSlug]/attendance/:sessionId/:date → get attendance for session+date
-POST /api/[tenantSlug]/attendance                  → upsert batch of marks
-GET  /api/[tenantSlug]/attendance/history          → paginated history (owner view)
-```
-
-**POST body:**
-```typescript
-{
-  session_id: string,
-  date: string,          // YYYY-MM-DD
-  marks: Array<{
-    member_id: string,
-    status: 'present' | 'absent' | 'unmarked'
-  }>
-}
-```
-**Uses upsert** on `(member_id, session_id, date)` unique constraint.
-
-**Edit window rule:** `date` must be today (server-enforced). Past date = 403 unless owner setting `allow_backdated_attendance = true`.
-
-**Performance requirements (critical):**
-- Attendance list renders in <100ms (all members loaded upfront, no pagination)
-- Toggle updates local state immediately (optimistic UI), syncs to server
-- Re-render on toggle: ONLY the toggled row re-renders (use React.memo or separate state per row)
-- Save: single API call with all marks (not one call per member)
-
-**Acceptance criteria:**
-- [ ] 20-member batch: all 20 toggles responsive within 16ms (60fps)
-- [ ] Progress bar updates immediately on toggle
-- [ ] "Mark remaining absent" marks all unmarked rows, does NOT change already-marked rows
-- [ ] Save shows spinner, disables button, re-enables on success
-- [ ] Completion state shows for 2s then auto-navigates back
-- [ ] navigator.vibrate(10) called on toggle (no error on desktop)
-- [ ] Navigating away with unsaved marks: browser confirms "Leave without saving?"
-
----
-
-### P0.5 — Fee Plans
-
-**Routes:**
-```
-GET    /api/[tenantSlug]/plans       → list
-POST   /api/[tenantSlug]/plans       → create
-PUT    /api/[tenantSlug]/plans/:id   → update
-DELETE /api/[tenantSlug]/plans/:id   → delete (403 if members assigned)
-```
-
-**Amount handling:** UI accepts rupees (e.g. 1500), API stores paise (150000). Conversion in API route, never in UI component.
-
-**Acceptance criteria:**
-- [ ] Amount displayed as ₹1,500.00 using formatCurrency() (never raw paise)
-- [ ] Delete blocked with message: "Cannot delete plan — 18 members are on this plan"
-- [ ] billing_type: monthly pre-selected on create form
-
----
-
-### P0.6 — Payments (Manual)
-
-**Routes:**
-```
-GET  /api/[tenantSlug]/payments/overdue       → members with overdue fees
-POST /api/[tenantSlug]/payments               → record payment
-GET  /api/[tenantSlug]/payments               → history (paginated)
-```
-
-**Overdue logic:**
+### users
 ```sql
--- "Overdue" = member has an active member_plan where next_due_date < today
-select m.id, m.full_name, m.phone, mp.next_due_date,
-       p.amount_paise, p.name as plan_name,
-       current_date - mp.next_due_date as days_overdue
-from members m
-join member_plans mp on mp.member_id = m.id and mp.is_active = true
-join plans p on p.id = mp.plan_id
-where mp.tenant_id = $1
-  and mp.next_due_date < current_date
-  and m.status = 'active'
-order by days_overdue desc;
+-- Users can read their own row
+CREATE POLICY "users_select_own" ON users
+  FOR SELECT USING (auth.uid() = id);
+
+-- Users can update their own row
+CREATE POLICY "users_update_own" ON users
+  FOR UPDATE USING (auth.uid() = id);
+
+-- club_staff can read users who belong to the same club
+CREATE POLICY "users_select_same_club" ON users
+  FOR SELECT USING (
+    id IN (
+      SELECT cs.user_id FROM club_staff cs
+      WHERE cs.club_id IN (
+        SELECT club_id FROM club_staff WHERE user_id = auth.uid()
+      )
+    )
+    OR
+    id IN (
+      SELECT cm.user_id FROM club_memberships cm
+      WHERE cm.club_id IN (
+        SELECT club_id FROM club_staff WHERE user_id = auth.uid()
+      )
+    )
+  );
 ```
 
-**Record payment flow:**
-1. POST creates `payments` row
-2. Updates `member_plans.next_due_date` += plan duration_days
-3. If WhatsApp receipt enabled: queues message to `communications_log`
-4. Returns `{ payment_id, receipt_url }`
-
-**Acceptance criteria:**
-- [ ] Overdue list sorted by most days overdue first
-- [ ] Amount pre-filled from plan amount (editable)
-- [ ] Cash pre-selected as payment method
-- [ ] After save: member disappears from overdue list (optimistic update)
-- [ ] Toast: "₹1,500 payment recorded for Arjun Kumar"
-
----
-
-### P0.7 — Dashboard
-
-**Routes:**
-```
-GET /api/[tenantSlug]/dashboard/stats    → { revenue_mtd, active_members, avg_attendance, overdue_count }
-GET /api/[tenantSlug]/dashboard/alerts   → { overdue, absent_5_days, expiring_week }
-GET /api/[tenantSlug]/dashboard/activity → last 10 events
-```
-
-**Stats queries (all scoped to tenant_id):**
-- revenue_mtd: `SUM(amount_paise) WHERE payment_date >= first_of_month`
-- active_members: `COUNT WHERE status = 'active'`
-- avg_attendance: last 30 days, all sessions
-- overdue_count: overdue query count
-
-**Alert thresholds:**
-- Overdue: next_due_date < today
-- Absent: absent in 5 of last 5 marked sessions (not calendar days)
-- Expiring: member_plans.next_due_date BETWEEN today AND today + 7
-
-**Coach dashboard:** Only shows today's sessions assigned to `auth.uid()`. No stats. No financials.
-
-**Acceptance criteria:**
-- [ ] Stats load within 1.5s on first visit
-- [ ] "Needs Attention" shows max 3 items, sorted by urgency (red first)
-- [ ] Empty "Needs Attention" shows "All clear!" in success-50 background
-- [ ] Coach sees ONLY their own sessions. No revenue numbers anywhere.
-
----
-
-### P0.8 — WhatsApp (Manual, via Interakt)
-
-**Integration:** Interakt API
-**Env vars required:** `INTERAKT_API_KEY`
-**Base URL:** `https://api.interakt.ai/v1/public/message/`
-
-**API call (server-side only — key never exposed to client):**
-```typescript
-// POST to Interakt
-{
-  "countryCode": "+91",
-  "phoneNumber": "9876543210",
-  "callbackData": "payment_reminder",
-  "type": "Template",
-  "template": {
-    "name": "payment_reminder",   // must match approved template name in Interakt
-    "languageCode": "en",
-    "bodyValues": ["Arjun", "₹1,500", "15 Mar 2026", "Ravi's Fitness Hub", "https://..."]
-  }
-}
-```
-
-**Message templates (P0 — hard-coded, not customisable yet):**
-
-| Type | Template name | Variables |
-|---|---|---|
-| payment_reminder | `zenzo_payment_reminder` | member_name, amount, due_date, business_name, payment_link |
-| payment_receipt | `zenzo_payment_receipt` | member_name, amount, date, plan_name, business_name |
-| welcome | `zenzo_welcome` | member_name, business_name, portal_link |
-
-**Route:** `POST /api/[tenantSlug]/communications/send`
-```typescript
-body: {
-  member_id: string,
-  type: 'payment_reminder' | 'payment_receipt' | 'welcome',
-  variables?: Record<string, string>   // overrides
-}
-```
-
-**Flow:**
-1. Resolve member phone (or guardian phone if guardian_id set)
-2. Build template variables
-3. POST to Interakt API
-4. Insert to `communications_log` with status
-5. On Interakt error: log as 'failed', surface in comms hub
-
-**Acceptance criteria:**
-- [ ] INTERAKT_API_KEY never appears in client bundle
-- [ ] Guardian's phone used when member has guardian_id
-- [ ] Failed send: logged, shown in comms history with error reason
-- [ ] Bulk send (all overdue): max 10 concurrent requests (rate-limit safe)
-
----
-
-### P0.9 — Settings (Core)
-
-**Routes:**
-```
-GET  /api/[tenantSlug]/settings          → tenant settings
-PUT  /api/[tenantSlug]/settings          → update tenant
-PUT  /api/[tenantSlug]/settings/terminology → update terminology jsonb
-```
-
-**Terminology propagation:**
-- Stored in `tenants.terminology` (jsonb)
-- Fetched once per session, cached in React context: `<TerminologyProvider>`
-- All UI text uses: `const { member, session } = useTerminology()`
-- Never hardcode "Member" or "Batch" in UI components — always use terminology context
-
-**Acceptance criteria:**
-- [ ] Changing "Member" → "Student" propagates across ALL UI in <1s (context re-render)
-- [ ] Business type change shows confirm: "This will reset your terminology labels. Continue?"
-- [ ] Logo upload: max 2MB, JPG/PNG/WebP only, stored in Supabase Storage `tenant-logos` bucket
-
----
-
-## P1 — Ship within 90 days of launch
-
----
-
-### P1.1 — Member Profile (Full Tabs)
-
-**Route:** `/:tenantSlug/members/:id`
-**Tabs:** Overview | Attendance | Payments | Progression
-
-**Overview tab:**
-- 3 stat cards: attendance % this month, next fee due date + amount, current milestone
-- Activity timeline: last 20 events (attendance marks, payments, milestone promotions)
-- Timeline query: union of attendance + payments + member_milestones, ordered by created_at desc
-
-**Attendance tab:**
-- Calendar heatmap: current month default, navigate months with arrows
-- Green = present, Red = absent, Grey dot = no session scheduled
-- Below calendar: this month %, last month %, streak count (consecutive present)
-- Streak: count of consecutive days where at least one session was marked present
-
-**Payments tab:**
-- Next due card (if overdue: red, if due within 7 days: amber, else green)
-- Payment history table/cards
-- Each row: date, plan, amount, method, receipt link
-
-**Progression tab (conditional on terminology.show_milestones):**
-- Current milestone card (colour from milestone.color_hex)
-- History timeline: milestone name + date + notes
-- "Promote" button → opens promotion form
-
----
-
-### P1.2 — Bulk Import
-
-**Route:** `/:tenantSlug/members/import`
-**API:** `POST /api/[tenantSlug]/members/import` (multipart/form-data)
-
-**Template columns:** Name*, Phone, Email, Session (name match), Plan (name match), Guardian Phone
-
-**Validation (server-side):**
-- Duplicate phones within the file: mark as error
-- Duplicate phone against existing members: mark as error with existing member name
-- Missing required column (Name): mark as error
-- Session name not found: mark as warning (create member without session)
-- Plan name not found: mark as warning (create member without plan)
-
-**Response:** `{ valid: Row[], errors: { row: number, field: string, message: string }[] }`
-
-**Acceptance criteria:**
-- [ ] Template CSV downloadable before upload
-- [ ] Preview shows valid rows (green), error rows (red with reason) before import
-- [ ] "Import X valid members, skip Y errors" button
-- [ ] Progress bar: updates per batch of 10 inserts
-- [ ] After import: redirect to member list with "X members imported" toast
-
----
-
-### P1.3 — Razorpay Integration
-
-**Env vars:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `NEXT_PUBLIC_RAZORPAY_KEY_ID`
-
-**Payment link flow:**
-1. `POST /api/[tenantSlug]/payments/create-order`
-   - Creates Razorpay Order via Razorpay API
-   - Stores `razorpay_order_id` in a pending payment row
-   - Returns `{ order_id, amount, key_id, prefill: { name, contact, email } }`
-2. WhatsApp message sent with payment URL: `https://rzp.io/...` or hosted checkout page
-3. Member completes payment on Razorpay
-
-**Webhook:** `POST /api/webhooks/razorpay`
-- Verify signature: `razorpay.webhooks.validateWebhookSignature(body, signature, secret)`
-- On `payment.captured`: update payment row status → 'completed', update member_plan.next_due_date
-- On `payment.failed`: update payment row status → 'failed'
-- Auto-send WhatsApp receipt if `communications` setting enabled
-- Idempotent: check if payment already processed before updating
-
-**Security:**
-- Webhook secret stored in env: `RAZORPAY_WEBHOOK_SECRET`
-- Raw body required for signature verification (use `req.text()` not `req.json()`)
-- HTTPS only
-
-**Acceptance criteria:**
-- [ ] Payment link generates and sends via WhatsApp in <3 seconds
-- [ ] Webhook processes payment within 30 seconds of member paying
-- [ ] Member portal shows updated "Paid" status after webhook processes
-- [ ] Duplicate webhook calls are idempotent (no double payments)
-
----
-
-### P1.4 — Staff Management
-
-**Routes:**
-```
-GET    /api/[tenantSlug]/staff              → list staff profiles
-POST   /api/[tenantSlug]/staff              → add staff (creates auth user + profile)
-PUT    /api/[tenantSlug]/staff/:id          → update (role, batch assignments)
-DELETE /api/[tenantSlug]/staff/:id          → remove (sets profile inactive, not deleted)
-```
-
-**Add staff flow:**
-1. Create `auth.users` entry via Supabase Admin API (service role)
-2. Create `profiles` row with role='staff', tenant_id
-3. Send WhatsApp welcome with login link: `https://app.zenzo.in/login`
-4. Staff sets own password on first login (Supabase magic link or temp password)
-
-**Access control (RLS-enforced, not just UI):**
-- Staff can SELECT members, sessions, attendance, member_milestones
-- Staff can INSERT/UPDATE attendance
-- Staff can INSERT member_milestones (promotions)
-- Staff CANNOT SELECT/INSERT/UPDATE payments, communications_log
-- Staff CANNOT access tenants UPDATE, profiles INSERT for other staff
-
-**Acceptance criteria:**
-- [ ] Staff login shows simplified nav (no Payments, Reports, Communications, Staff, Settings)
-- [ ] Staff attempting to access /payments → redirected to /dashboard
-- [ ] RLS test: staff user cannot query payments table directly via Supabase client
-
----
-
-### P1.5 — Member Portal (Token-gated)
-
-**Route:** `/m/[token]` (public — no auth required)
-**Tabs:** Home | Attendance | Payments
-
-**Token resolution:**
-```typescript
-// In page component (server-side)
-const { data: tokenRow } = await supabaseService
-  .from('member_portal_tokens')
-  .select('member_id, tenant_id, expires_at')
-  .eq('token', params.token)
-  .single()
-
-if (!tokenRow || tokenRow.expires_at < new Date()) {
-  return <TokenExpiredPage />
-}
-```
-
-**Token generation:**
-- Generated on member creation
-- Regenerated on: manual "Send portal link" action, token expiry
-- Stored in `member_portal_tokens.token` (hex-encoded 32 random bytes)
-
-**Guardian portal:**
-- If `members.guardian_id` is null AND member IS a guardian of others:
-  → show tab switcher: "Viewing: [Child 1 Name] | [Child 2 Name]"
-  → one token per guardian, shows all their children
-
-**Performance:**
-- All data for home tab loaded in single query (no waterfalls)
-- Max page weight: 100KB JS (gzipped)
-- Always renders as max-width: 480px, even on desktop
-
-**Acceptance criteria:**
-- [ ] Expired token shows: "This link has expired. Contact [Business Name] for a new link."
-- [ ] Home tab loads above-fold content in <1.5s on 4G
-- [ ] Payment via Razorpay: success screen shows within 3s of payment
-- [ ] Receipt downloadable as PDF (use browser print-to-PDF or react-pdf)
-- [ ] Guardian token shows all linked children
-
----
-
-### P1.6 — Milestone / Progression Module
-
-**Conditional:** Only visible when `tenants.terminology.show_milestones = true`
-**Default:** true for martial_arts, dance, music. false for gym, yoga, tuition.
-
-**Routes:**
-```
-GET  /api/[tenantSlug]/milestones              → list configured milestones
-POST /api/[tenantSlug]/milestones              → create milestone level
-POST /api/[tenantSlug]/members/:id/milestones  → log a promotion
-GET  /api/[tenantSlug]/members/:id/milestones  → member's history
-```
-
-**Promote flow:**
-1. POST to member milestones → inserts `member_milestones` row
-2. If WhatsApp toggle on → queues congratulations message
-3. Member portal and profile both reflect new milestone immediately
-
-**Acceptance criteria:**
-- [ ] Milestone module hidden entirely if show_milestones = false (nav item, profile tab, reports)
-- [ ] Terminology used: "Belt" vs "Grade" vs "Level" based on terminology config
-- [ ] Promotion history shows on member profile and member portal
-- [ ] WhatsApp congrats sent within 10s of promotion save
-
----
-
-### P1.7 — Attendance History (Owner View)
-
-**Route:** `/:tenantSlug/attendance/history`
-**API:** `GET /api/[tenantSlug]/attendance/history?session_id=&start=&end=`
-
-**Grid data structure:**
-```typescript
-{
-  members: { id: string, name: string }[],
-  dates: string[],                        // YYYY-MM-DD array
-  records: { [memberId]: { [date]: 'present'|'absent'|'unmarked'|'no_session' } }
-}
-```
-
-**"No session" logic:** if the session is not scheduled on that day_of_week → show '—'
-
-**At-risk query:**
+### clubs
 ```sql
--- Members absent in 3+ of their last 5 scheduled sessions
+-- Public read: verified + listed clubs (for public listing page)
+CREATE POLICY "clubs_select_public" ON clubs
+  FOR SELECT USING (listed = true AND verification_status = 'verified');
+
+-- Staff read own club
+CREATE POLICY "clubs_select_staff" ON clubs
+  FOR SELECT USING (
+    id IN (SELECT club_id FROM club_staff WHERE user_id = auth.uid())
+  );
+
+-- Owner write own club
+CREATE POLICY "clubs_update_owner" ON clubs
+  FOR UPDATE USING (owner_id = auth.uid());
+
+-- Authenticated users can create clubs (for onboarding)
+CREATE POLICY "clubs_insert_authenticated" ON clubs
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL AND owner_id = auth.uid());
 ```
 
-**Acceptance criteria:**
-- [ ] Grid is horizontally scrollable on mobile (not broken layout)
-- [ ] Filter by session and date range, max 31 days range (UI enforced)
-- [ ] At-risk section updates when filters change
-- [ ] CSV export of filtered view
+### club_staff
+```sql
+-- Staff can read club_staff for their own clubs
+CREATE POLICY "club_staff_select" ON club_staff
+  FOR SELECT USING (
+    club_id IN (SELECT club_id FROM club_staff WHERE user_id = auth.uid())
+  );
 
----
+-- Only owner can add/remove staff
+CREATE POLICY "club_staff_insert_owner" ON club_staff
+  FOR INSERT WITH CHECK (
+    club_id IN (
+      SELECT club_id FROM club_staff WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
 
-### P1.8 — Reports (Basic)
-
-**Revenue report:** `/reports/revenue`
-- Stats: collected MTD, outstanding, projected (collected + outstanding)
-- Bar chart: last 6 months revenue (simple SVG or recharts — lightweight)
-- Breakdown: by payment method (horizontal bars, no chart lib needed)
-- Filter: date range, session
-- CSV export
-
-**Attendance report:** `/reports/attendance`
-- Stats: avg rate, total sessions this month, at-risk count
-- Line chart: daily attendance rate (last 30 days)
-- Batch breakdown: session name + avg % (horizontal bars)
-- At-risk member list with "Send reminder" quick action
-
-**Acceptance criteria:**
-- [ ] Charts render without crashing on 0-data state
-- [ ] CSV export generates correct data (test with 100+ payment rows)
-- [ ] Reports page accessible to owner only — staff redirect to dashboard
-
----
-
-### P1.9 — WhatsApp Automation Settings
-
-**Route:** `/:tenantSlug/settings` → Notifications tab
-
-**Toggle settings (stored in `tenants` table or separate `tenant_settings` jsonb):**
-```typescript
-{
-  whatsapp_payment_reminder: boolean,  // default true
-  whatsapp_payment_receipt: boolean,   // default true
-  whatsapp_welcome: boolean,           // default true
-  whatsapp_milestone: boolean,         // default true
-}
+CREATE POLICY "club_staff_delete_owner" ON club_staff
+  FOR DELETE USING (
+    club_id IN (
+      SELECT club_id FROM club_staff WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
 ```
 
+### club_memberships
+```sql
+-- Staff read memberships in their club
+CREATE POLICY "memberships_select_staff" ON club_memberships
+  FOR SELECT USING (
+    club_id IN (SELECT club_id FROM club_staff WHERE user_id = auth.uid())
+  );
+
+-- Members read their own membership
+CREATE POLICY "memberships_select_own" ON club_memberships
+  FOR SELECT USING (user_id = auth.uid());
+
+-- Only owner can create/update/delete memberships
+CREATE POLICY "memberships_write_owner" ON club_memberships
+  FOR ALL USING (
+    club_id IN (
+      SELECT club_id FROM club_staff WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
+```
+
+### attendance_records
+```sql
+-- Staff read attendance in their club
+CREATE POLICY "attendance_select_staff" ON attendance_records
+  FOR SELECT USING (
+    club_id IN (SELECT club_id FROM club_staff WHERE user_id = auth.uid())
+  );
+
+-- Members read their own attendance
+CREATE POLICY "attendance_select_own" ON attendance_records
+  FOR SELECT USING (
+    membership_id IN (SELECT id FROM club_memberships WHERE user_id = auth.uid())
+  );
+
+-- Staff (owner or coach) can write attendance
+CREATE POLICY "attendance_write_staff" ON attendance_records
+  FOR ALL USING (
+    club_id IN (SELECT club_id FROM club_staff WHERE user_id = auth.uid())
+  );
+```
+
+### payments
+```sql
+-- Owner reads all payments in their club
+CREATE POLICY "payments_select_owner" ON payments
+  FOR SELECT USING (
+    club_id IN (
+      SELECT club_id FROM club_staff WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
+
+-- Members read their own payments
+CREATE POLICY "payments_select_own" ON payments
+  FOR SELECT USING (
+    membership_id IN (SELECT id FROM club_memberships WHERE user_id = auth.uid())
+  );
+
+-- Only owner can record payments
+CREATE POLICY "payments_insert_owner" ON payments
+  FOR INSERT WITH CHECK (
+    club_id IN (
+      SELECT club_id FROM club_staff WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
+```
+
+---
+
+## P0 Features — Phase 1 (Club Tools)
+
+### P0.1 Auth & Club Onboarding
+
+**Signup flow:**
+1. Form: Full Name + Phone (+91 prefix) + Email + Password (min 8 chars)
+2. Submit → POST `/api/auth/signup` → sends WhatsApp OTP via Interakt
+3. OTP modal: 6-digit input, 3 attempts, 60s cooldown, 5-minute expiry
+4. On OTP success: `supabase.auth.signUp()` → creates Supabase Auth user + `users` row
+5. Post-signup routing:
+   - Has `invite_token` in URL params → create `club_memberships` row (status: active), redirect to member portal
+   - No invite token → redirect to Club Onboarding Wizard
+
+**Login flow:**
+1. Form: Email or Phone + Password (single field, auto-detect format)
+2. `supabase.auth.signInWithPassword()`
+3. On success: POST `/api/auth/profile` → returns `{ clubSlug, role }`
+4. Has 1 club → redirect to `/${clubSlug}/dashboard`
+5. Has 2+ clubs → redirect to `/clubs` (club picker page)
+6. Has no club staff role → redirect to consumer home or landing
+
+**Forgot Password:**
+1. Email field → `supabase.auth.resetPasswordForEmail()`
+2. Supabase sends reset link (valid 1 hour)
+3. On reset: min 8 chars, redirect to login
+
+**Club Onboarding Wizard (5 steps):**
+1. **Business Type** — card grid: Gym/Fitness, Martial Arts, Dance/Performing Arts, Yoga/Wellness, Other. Auto-configures terminology + progression toggle.
+2. **Studio Setup** — Business Name, URL Slug (auto-generated, editable, real-time availability check), City, Business Phone. Creates `clubs` row + `club_staff` row (role: owner).
+3. **Create First Batch** (skippable) — Name, Start Time, End Time, Days.
+4. **Invite First Members** (skippable) — Phone number input + [Send Invite] button. Each invite sends WhatsApp message and creates `club_memberships` (status: pending_invite).
+5. **Celebrate** — redirect to `/:clubSlug/dashboard` with tooltip overlays.
+
 **Acceptance criteria:**
-- [ ] Toggling off payment_receipt: no WhatsApp sent after recording payment
-- [ ] Settings saved immediately (optimistic update + server confirm)
+- OTP expires after 5 minutes. Invalid code shows error (not which field was wrong).
+- Phone must be unique across all users.
+- Slug: lowercase letters, numbers, hyphens only. Min 3, max 40 chars. Taken → show "Not available" in real time.
+- Club is created with `verification_status: 'pending'`, `listed: false`.
+- All management tools available immediately after club creation (verification gates listing only).
 
 ---
 
-## P2 — Growth Phase (post 500 paying customers)
+### P0.2 Member Management
 
-> Do not build P2 until P0+P1 are stable and generating revenue.
+**Core rule: no shadow users.** A member is either a real Zenzo user or a pending invite. Never create an `active` `club_memberships` row for a user that doesn't have a Supabase Auth account.
 
-### P2.1 — Automated WhatsApp Reminders
-- Supabase Edge Function: `send-scheduled-reminders`
-- Trigger: pg_cron job, runs daily at 08:00 IST
-- Logic: query members with next_due_date = today + 3 OR today, send payment_reminder template
-- Per-member opt-out: `member_plans.reminder_enabled boolean default true`
-- Attendance alert: query members absent in last 3+ sessions → notify owner (not member)
+**Invite Member (single):**
+1. POST `/api/clubs/[clubId]/members/invite` with `{ phone, name? }`
+2. Check if phone has a Zenzo account:
+   - YES + already member of this club → Error: "This person is already a member"
+   - YES + not a member → Create `club_memberships` (status: active), send WhatsApp welcome
+   - NO → Generate invite token (encodes club_id + phone + expiry 30 days). Create `club_memberships` (status: pending_invite). Send WhatsApp invite via Interakt.
+3. Invite text: "[Owner Name] has invited you to join [Club Name] on Zenzo. Sign up here: [link]"
 
-### P2.2 — Advanced Analytics
-- Member growth report: total, new, churned, net growth trend
-- Retention cohort table: join month × months retained
-- At-risk scoring: low attendance (< 50%) + overdue fees = high risk
-- "Send reminder to at-risk" bulk action from retention report
+**Invite Member (bulk):**
+- Upload CSV/Excel. Required column: Phone Number. Optional: Name, Email.
+- Validate: 10-digit Indian format. Preview: "45 valid, 3 duplicates, 2 invalid."
+- Send invites in batch. Progress bar. Results summary.
 
-### P2.3 — Custom WhatsApp Templates
-- Template editor UI in Settings → Notifications
-- Variable picker: {member_name}, {amount}, {due_date}, etc.
-- Preview with real member data
-- Template submission to Interakt for WhatsApp approval (manual process)
+**Member List (`/:clubSlug/members`):**
+- Desktop: data table — Name, Phone, Batch(es), Status badge, Plan, Fee Amount
+- Mobile: card list — name, status badge, batch, fee info
+- Filters: Status (All/Active/Overdue/Expired/Pending Invite), Batch (multi-select), Plan
+- Search: instant filter on name or phone (debounced 300ms)
+- Sort: Name A-Z (default), Join date, Last attendance
+- Pagination: 25/page desktop, infinite scroll mobile
+- Bulk actions: Send Reminder, Assign Batch, Delete (when checkboxes selected)
 
-### P2.4 — Session Pack / Drop-in Billing
-- session_pack: credits decrement on each 'present' mark in attendance
-- `attendance` trigger → decrement `member_plans.credits_remaining`
-- "Low credits" alert when credits_remaining ≤ 2 (show in dashboard Needs Attention)
-- Drop-in: payment recorded at time of marking present
+**Member Status Lifecycle:**
+```
+pending_invite → active → overdue → expired
+                    ↑                   │
+                    └───────────────────┘ (payment recorded)
+```
+- `pending_invite` → `active`: person completes Zenzo signup via invite link
+- `active` → `overdue`: payment due date passes without payment recorded
+- `overdue` → `active`: payment recorded
+- `overdue` → `expired`: plan period + 7-day grace ends without payment
+- `expired` → `active`: new payment recorded (reactivates membership)
+- `deleted`: soft delete (deleted_at set). History preserved for reports.
 
-### P2.5 — Trial / Enquiry CRM
-- New table: `enquiries (id, tenant_id, name, phone, interested_session_id, source, status, created_at)`
-- Status enum: enquiry | trial_booked | trial_done | converted | not_joined
-- Enquiry list in Members → "Enquiries" tab
-- Convert to member: one-click pre-fills Add Member form
+**Member Profile (`/:clubSlug/members/:memberId`):**
+- Header: Avatar (initials fallback), Name, Phone, Email, Status badge, Batch(es), Plan, "Member since"
+- Tabs: Overview | Attendance | Payments | Progression (if enabled)
+- Actions menu: Send WhatsApp, Record Payment, Change Batch, Change Plan (owner only), Deactivate, Delete
 
-### P2.6 — Offline-First Attendance
-- Service Worker: cache attendance screen on first load
-- IndexedDB: store pending attendance marks
-- Sync on reconnect: process queue, show "X marks synced" toast
-- UI indicator: "Offline — marks saved locally" banner when navigator.onLine = false
-
-### P2.7 — Multi-location
-- One auth user → multiple tenant profiles
-- Tenant switcher in sidebar (profile dropdown)
-- All queries already scoped by tenant_id — no schema changes needed
+**API routes:**
+```
+GET    /api/clubs/[clubId]/members
+POST   /api/clubs/[clubId]/members/invite
+POST   /api/clubs/[clubId]/members/bulk-invite
+GET    /api/clubs/[clubId]/members/[memberId]
+PUT    /api/clubs/[clubId]/members/[memberId]
+DELETE /api/clubs/[clubId]/members/[memberId]
+POST   /api/clubs/[clubId]/members/[memberId]/assign-plan
+POST   /api/clubs/[clubId]/members/[memberId]/send-whatsapp
+```
 
 ---
 
-## Complete API Route Map
+### P0.3 Batch Management
+
+**Core principle:** Batches are scheduling groups. No link to billing. A member can be in 0, 1, or many batches.
+
+**Batch List (`/:clubSlug/batches`):**
+- Card grid: 2 columns desktop, 1 column mobile
+- Each card: Batch name, Timing (6:00–7:30 AM), Days (Mon–Fri), Member count, Avg attendance %, Coach
+
+**Create Batch (`/:clubSlug/batches/new`):**
+- Fields: Name (required), Start Time, End Time, Days (pill toggles, Mon–Fri pre-selected), Coach (searchable dropdown of club_staff with coach role), Max Capacity (optional), Description (optional)
+- Validation: name required, start < end, at least 1 day selected
+
+**Batch Detail (`/:clubSlug/batches/[batchId]`):**
+- Stat cards: Members count, Avg Attendance % this month, Today: X/Y present
+- Primary action: [Take Attendance] → `/:clubSlug/attendance/take/:batchId`
+- Member list with remove option
+- [+ Add Member to Batch] → searchable picker of club members NOT already in this batch
+
+**Many-to-many join:** `member_batches (membership_id, batch_id)`. Removing from batch does NOT remove from club.
+
+**Soft delete:** `batches.deleted_at`. Attendance history preserved.
+
+**API routes:**
+```
+GET    /api/clubs/[clubId]/batches
+POST   /api/clubs/[clubId]/batches
+GET    /api/clubs/[clubId]/batches/[batchId]
+PUT    /api/clubs/[clubId]/batches/[batchId]
+DELETE /api/clubs/[clubId]/batches/[batchId]
+POST   /api/clubs/[clubId]/batches/[batchId]/members
+DELETE /api/clubs/[clubId]/batches/[batchId]/members/[membershipId]
+```
+
+---
+
+### P0.4 Attendance — THE Ritual Screen
+
+**Core principle:** Fast (under 60 seconds for 20 members), satisfying (haptic, visual progress), foolproof (works offline, auto-saves). This screen defines whether coaches adopt Zenzo.
+
+**Take Attendance (`/:clubSlug/attendance/take/[batchId]`):**
+- Header: Back arrow, Batch name, Date (auto today)
+- Progress bar: "12 of 18 marked" (fills as members marked present OR absent). Turns success at 100%.
+- Member list: all members assigned to batch (from `member_batches`), sorted A-Z, 56px rows
+- Each row: Avatar (36px initials), Member name, Toggle (48x48px min tap target)
+- Toggle cycles: Unmarked (neutral) → Present (green ✓) → Absent (red ✗) → Unmarked
+- Toggle feedback: 150ms color transition, scale(0.95)→scale(1.0) on tap, `navigator.vibrate(10)`
+- No confirmation dialogs on toggle. Any state is instantly reversible.
+- Search: hidden by default (pull down to reveal), filters in real-time
+- Drop-in: [+ Add Drop-in] → picker of club members NOT in this batch. Recorded with `is_drop_in: true`. Does NOT permanently add to batch.
+- Bottom bar (sticky): [Mark remaining absent] [Save]
+- Edit window: same day until midnight IST. Reopening loads previous marks.
+
+**Completion state:** Full-screen animated checkmark → "Attendance saved!" + "15 present · 3 absent" → auto-redirect to batch list after 2 seconds.
+
+**Offline support (IndexedDB):**
+- Every toggle tap saves to IndexedDB immediately
+- Sync indicator: 🟢 "Synced" / 🟡 "Saved locally" / 🔄 "Syncing..."
+- On connectivity return: auto-push queued records
+- Conflict resolution: last-write-wins. Toast: "Attendance updated — some changes were synced from another device."
+- Cache member list per batch. If no cache + offline: show error.
+
+**Navigate-away guard:** Modal "You have unsaved attendance marks. [Discard] [Save & Leave]"
+
+**Attendance History (`/:clubSlug/attendance/history`):**
+- Desktop: grid — members as rows, dates as columns. ✓ green / ✗ red / — grey (no class) / empty (not marked)
+- Mobile: list per member — "Arjun Kumar — 4/5 this week (80%)"
+- Filters: Batch, Date range
+- "At risk" section: members absent 3+ of last 5 sessions
+
+**API routes:**
+```
+GET  /api/clubs/[clubId]/attendance
+POST /api/clubs/[clubId]/attendance
+GET  /api/clubs/[clubId]/attendance/[batchId]/today
+```
+
+---
+
+### P0.5 Fee Plans
+
+**Create/Edit Plan:**
+- Fields: Name (required), Amount in ₹ (required, stored as paise), Billing Cycle (Monthly/Quarterly/Half-yearly/Annual/Per Session), Description (optional)
+- Cannot delete plan with active members. Soft delete via `deleted_at`.
+
+**Assign plan to member:**
+- Start date defaults to today
+- Calculates `next_due_date` based on `clubs.billing_cycle_type`:
+  - DOJ-based: start_date + billing_cycle
+  - Calendar-based: 1st of next month
+
+**Due date logic:**
+- Monthly DOJ: joined Mar 15 → due Apr 15, May 15, ...
+- Monthly Calendar: any join date → due Apr 1, May 1, ...
+- Per Session: no recurring due date
+
+**Auto-expiry cron (daily, midnight IST):**
+1. `active` memberships where `next_due_date` < today → `status = 'overdue'`
+2. `overdue` memberships where `expires_at` < today → `status = 'expired'`
+3. Notify owner: "[X] members are now overdue"
+
+**API routes:**
+```
+GET    /api/clubs/[clubId]/fee-plans
+POST   /api/clubs/[clubId]/fee-plans
+PUT    /api/clubs/[clubId]/fee-plans/[planId]
+DELETE /api/clubs/[clubId]/fee-plans/[planId]
+POST   /api/clubs/[clubId]/members/[memberId]/assign-plan
+```
+
+---
+
+### P0.6 Payments (Manual)
+
+**Core principle:** Phase 1 — all payments are manual recordings. Owner receives money offline and records in Zenzo.
+
+**Record Payment (`/:clubSlug/payments/record`):**
+- Fields: Member (searchable dropdown, pre-fills overdue amount), Amount in ₹, Method (Cash/UPI/Bank Transfer/Other), Date (default today, can backdate), Reference/Note, ☑ Send receipt via WhatsApp, ☑ Send receipt via Email
+- On save:
+  1. Creates `payments` row
+  2. Updates `club_memberships.status` (overdue → active if this covers overdue amount)
+  3. Recalculates `next_due_date`
+  4. Sends WhatsApp receipt (if checked, via Interakt)
+  5. Toast: "₹1,500 recorded for Arjun Kumar"
+
+**Overdue List (`/:clubSlug/payments`):**
+- Header: Total outstanding amount. [Send Reminders to All]
+- Card list sorted by most overdue first
+- Each card: Avatar + Name, Amount due + Plan + Due date, Days overdue, [Send Reminder] [Record Payment]
+
+**Payment History (`/:clubSlug/payments/history`):**
+- Filters: Date range, Payment method
+- Desktop: table — Date, Member, Amount, Method, Reference
+- Mobile: card list
+- Monthly summary. [Download CSV]
+
+**API routes:**
+```
+GET  /api/clubs/[clubId]/payments
+POST /api/clubs/[clubId]/payments
+GET  /api/clubs/[clubId]/payments/overdue
+POST /api/clubs/[clubId]/payments/send-reminders
+```
+
+---
+
+### P0.7 Dashboard
+
+**Owner Dashboard (`/:clubSlug/dashboard`):**
+- Greeting: "Good morning, [Name] 👋" + date
+- Stat cards: Revenue this month, Active members, Avg attendance %, Overdue count
+- Needs Attention block (max 3 items, sorted urgency):
+  - 🔴 "X members have overdue fees" → /payments
+  - 🟡 "X members absent 5+ days" → filtered members
+  - 🟡 "X memberships expiring this week" → filtered members
+  - Empty state: "All clear! Nothing needs your attention today."
+- Quick Actions: [+ Invite Member] [Take Attendance] [Record Payment]
+- Recent Activity feed: 10 items, most recent first
+- Loading: shimmer skeletons matching each component shape
+
+**Coach Dashboard (`/:clubSlug/dashboard` — coach role):**
+- Today's batches only (batches where coach_id = current user), sorted by time
+- Each card: Status (🟢 upcoming / ✓ completed), Name, Time + member count, [Take Attendance →]
+- No financial data. No reports. No settings.
+
+---
+
+### P0.8 WhatsApp Notifications (via Interakt)
+
+All toggleable per club in Settings. All templates are pre-built (not editable in Phase 1).
+
+| Notification | Trigger | Recipients | Key variables |
+|---|---|---|---|
+| Payment Reminder | Auto: 3 days before due + on due date | Member | name, plan_name, amount, due_date, club_name |
+| Payment Receipt | Auto: on payment record (if checkbox checked) | Member | name, amount, plan_name, date, method, next_due_date |
+| Welcome Message | Auto: on member signup via invite link | Member | name, club_name, portal_link |
+| Belt/Level Promotion | Manual: owner logs promotion | Member | name, new_belt, club_name |
+| Attendance Alert | Auto: member absent 3+ consecutive sessions | Owner | member_name, absent_count, club_name |
+| Expiry Warning | Auto: 7 days before expires_at | Member | name, expires_at, plan_name, club_name |
+| Member Invite | Manual: on invite | Invited person | owner_name, club_name, signup_link |
+
+**Integration:** Interakt API `POST https://api.interakt.ai/v1/public/message/` with template name + recipient phone + variables. Log every attempt in `notifications_log`. No retries in Phase 1.
+
+---
+
+### P0.9 Settings
+
+**Business Profile (`/:clubSlug/settings/profile`):**
+- Business Name, Business Type, URL Slug, City, Business Phone, Logo (max 2MB, square crop), Verification Photo
+- Billing Cycle Setting: DOJ-based / Calendar-based radio
+- [Save Changes] (explicit, not auto-save)
+
+**Notifications (`/:clubSlug/settings/notifications`):**
+- Toggle for each notification type with preview of template using sample data
+
+**Payment Gateway (`/:clubSlug/settings/payment-gateway`):**
+- Phase 1: Informational only. "Online payments coming soon. For now, record payments manually."
+- Razorpay connect UI (forward-looking prep)
+
+**Customization (`/:clubSlug/settings/customization`):**
+- Custom terminology: "Members are called: [input]", "Batches are called: [input]", "Progression levels: [input]"
+- Show Progression Module: on/off toggle
+- Progression Level Order: drag-to-reorder list, [+ Add Level]
+
+**Staff Management (`/:clubSlug/settings/staff`):**
+- [+ Add Staff]: Phone (checks Zenzo account), Role (Coach), Assign Batches
+  - Account exists → create `club_staff` link + WhatsApp notification
+  - No account → send WhatsApp invite link, `club_staff` created after signup
+- Remove staff: removes `club_staff` row. Zenzo account unaffected.
+
+---
+
+## P1 Features — Phase 1.5
+
+### P1.1 Belt/Level Progression
+- Enabled per club via `show_progression = true`
+- Pre-built level sets for martial arts, dance. Customizable in Settings.
+- Belt distribution view: horizontal bar showing members per level
+- Log promotion: from_level, to_level, date, notes. Updates `member_current_level`.
+- Auto-send WhatsApp congratulations on promotion
+
+### P1.2 Multi-Club Support
+- Club switcher in sidebar footer and mobile More sheet
+- Create additional club: abbreviated wizard (steps 2–3 only)
+- Coaches shared across clubs owned by same owner
+- Club picker page for users with 2+ clubs
+
+### P1.3 Reports
+- Revenue: collected, outstanding, projected, trend chart, breakdown by method (CSV export)
+- Attendance: avg rate, at-risk members, batch-wise breakdown (CSV export)
+- Member Growth: new vs churned trend (CSV export)
+- Retention: rate, avg tenure, cohort analysis, churn risk list (CSV export)
+- Owner-only. Coaches do not see reports.
+
+### P1.4 Trial Session Settings
+- Club settings: enable/disable, price (free or ₹X), duration, max per consumer
+- Trial history in club dashboard
+- Consumer trial booking: Phase 2
+
+### P1.5 Public Club Listing Page
+- Auto-generated at `/clubs/:slug` after Zenzo admin approves verification
+- Sections: Hero, Photos, About, Plans & Pricing, Schedule, Coaches, Trial CTA, WhatsApp Contact
+- Phase 1: read-only, no online enrollment. 404 until verified.
+
+### P1.6 Member Portal (View-only)
+- Token-gated: `/m/:token` (no login required). Token encodes user_id + club_id + 30-day expiry.
+- Tabs: Home (attendance %, next due, last payment, batch), Attendance (calendar heatmap), Payments (history + receipt view)
+- Mobile-only layout (max-width 480px). Phase 1: view only.
+
+---
+
+## P2 Features — Consumer Platform (scope only)
+
+- Consumer auth: phone OTP + Google Sign-In
+- Club discovery: search, filters, map view
+- Full club listing page with enrollment CTA + trial booking
+- Enrollment flow: plan selection → payment → membership activation
+- Consumer dashboard: my clubs, combined attendance calendar, payments
+- Reviews & ratings (verified members only)
+- Native iOS + Android app
+- SaaS subscription billing begins (first 50 clubs: early-adopter locked rate)
+
+---
+
+## API Route Map
+
+All routes are Next.js App Router route handlers at `apps/web/src/app/api/`.
 
 ### Auth
 ```
-POST /api/auth/signup                     → create user + send OTP
-POST /api/auth/verify-otp                 → verify phone OTP
-POST /api/auth/check-slug                 → check tenant slug availability
+POST /api/auth/signup              — create account + send WhatsApp OTP
+POST /api/auth/verify-otp          — verify WhatsApp OTP, complete signup
+POST /api/auth/profile             — get {clubSlug, role} after login
+POST /api/auth/logout              — sign out
 ```
 
-### Tenant (owner only)
+### Onboarding
 ```
-GET  /api/[tenantSlug]/settings           → get tenant
-PUT  /api/[tenantSlug]/settings           → update tenant
-PUT  /api/[tenantSlug]/settings/terminology
-POST /api/[tenantSlug]/settings/logo      → upload logo (multipart)
+POST /api/onboarding/club          — create club + club_staff (owner)
+GET  /api/onboarding/slug-check    — real-time slug availability
+```
+
+### Clubs
+```
+GET    /api/clubs/[clubId]
+PUT    /api/clubs/[clubId]
+GET    /api/clubs/[clubId]/staff
+POST   /api/clubs/[clubId]/staff
+DELETE /api/clubs/[clubId]/staff/[userId]
 ```
 
 ### Members
 ```
-GET    /api/[tenantSlug]/members                        → list + search + filter
-POST   /api/[tenantSlug]/members                        → create
-GET    /api/[tenantSlug]/members/:id                    → get one (with stats)
-PUT    /api/[tenantSlug]/members/:id                    → update
-DELETE /api/[tenantSlug]/members/:id                    → soft delete
-POST   /api/[tenantSlug]/members/import                 → bulk import
-GET    /api/[tenantSlug]/members/:id/attendance         → attendance history
-GET    /api/[tenantSlug]/members/:id/payments           → payment history
-GET    /api/[tenantSlug]/members/:id/milestones         → milestone history
-POST   /api/[tenantSlug]/members/:id/milestones         → log promotion
-POST   /api/[tenantSlug]/members/:id/portal-token       → generate/refresh portal token
+GET    /api/clubs/[clubId]/members
+POST   /api/clubs/[clubId]/members/invite
+POST   /api/clubs/[clubId]/members/bulk-invite
+GET    /api/clubs/[clubId]/members/[memberId]
+PUT    /api/clubs/[clubId]/members/[memberId]
+DELETE /api/clubs/[clubId]/members/[memberId]
+POST   /api/clubs/[clubId]/members/[memberId]/assign-plan
+POST   /api/clubs/[clubId]/members/[memberId]/send-whatsapp
 ```
 
-### Sessions
+### Batches
 ```
-GET    /api/[tenantSlug]/sessions                       → list
-POST   /api/[tenantSlug]/sessions                       → create
-PUT    /api/[tenantSlug]/sessions/:id                   → update
-DELETE /api/[tenantSlug]/sessions/:id                   → delete
-POST   /api/[tenantSlug]/sessions/:id/members           → add member
-DELETE /api/[tenantSlug]/sessions/:id/members/:memberId → remove member
-GET    /api/[tenantSlug]/sessions/today                 → today's sessions (coach: own only)
+GET    /api/clubs/[clubId]/batches
+POST   /api/clubs/[clubId]/batches
+GET    /api/clubs/[clubId]/batches/[batchId]
+PUT    /api/clubs/[clubId]/batches/[batchId]
+DELETE /api/clubs/[clubId]/batches/[batchId]
+POST   /api/clubs/[clubId]/batches/[batchId]/members
+DELETE /api/clubs/[clubId]/batches/[batchId]/members/[membershipId]
 ```
 
 ### Attendance
 ```
-GET  /api/[tenantSlug]/attendance/:sessionId/:date      → get marks for session+date
-POST /api/[tenantSlug]/attendance                       → upsert batch marks
-GET  /api/[tenantSlug]/attendance/history               → grid (owner view)
+GET  /api/clubs/[clubId]/attendance
+POST /api/clubs/[clubId]/attendance
+GET  /api/clubs/[clubId]/attendance/[batchId]/today
 ```
 
-### Plans
+### Fee Plans
 ```
-GET    /api/[tenantSlug]/plans             → list
-POST   /api/[tenantSlug]/plans             → create
-PUT    /api/[tenantSlug]/plans/:id         → update
-DELETE /api/[tenantSlug]/plans/:id         → delete (409 if members assigned)
+GET    /api/clubs/[clubId]/fee-plans
+POST   /api/clubs/[clubId]/fee-plans
+PUT    /api/clubs/[clubId]/fee-plans/[planId]
+DELETE /api/clubs/[clubId]/fee-plans/[planId]
 ```
 
 ### Payments
 ```
-GET  /api/[tenantSlug]/payments/overdue                 → overdue list
-GET  /api/[tenantSlug]/payments                         → history
-POST /api/[tenantSlug]/payments                         → record manual payment
-POST /api/[tenantSlug]/payments/create-order            → Razorpay order (P1)
-```
-
-### Dashboard
-```
-GET /api/[tenantSlug]/dashboard/stats                   → stat cards
-GET /api/[tenantSlug]/dashboard/alerts                  → needs-attention items
-GET /api/[tenantSlug]/dashboard/activity                → recent activity feed
-```
-
-### Communications
-```
-POST /api/[tenantSlug]/communications/send              → send WhatsApp
-GET  /api/[tenantSlug]/communications/log               → message history
+GET  /api/clubs/[clubId]/payments
+POST /api/clubs/[clubId]/payments
+GET  /api/clubs/[clubId]/payments/overdue
+POST /api/clubs/[clubId]/payments/send-reminders
 ```
 
 ### Reports
 ```
-GET /api/[tenantSlug]/reports/revenue                   → revenue data
-GET /api/[tenantSlug]/reports/attendance                → attendance data
-GET /api/[tenantSlug]/reports/members                   → member growth (P1)
-GET /api/[tenantSlug]/reports/retention                 → retention (P1)
+GET /api/clubs/[clubId]/reports/revenue
+GET /api/clubs/[clubId]/reports/attendance
+GET /api/clubs/[clubId]/reports/members
+GET /api/clubs/[clubId]/reports/retention
 ```
 
-### Staff
+### Notifications
 ```
-GET    /api/[tenantSlug]/staff                          → list
-POST   /api/[tenantSlug]/staff                          → add
-PUT    /api/[tenantSlug]/staff/:id                      → update
-DELETE /api/[tenantSlug]/staff/:id                      → remove
-```
-
-### Webhooks
-```
-POST /api/webhooks/razorpay                             → Razorpay payment events
+GET /api/clubs/[clubId]/notification-settings
+PUT /api/clubs/[clubId]/notification-settings
+GET /api/clubs/[clubId]/notifications-log
 ```
 
-### Member Portal (public)
+### Cron Jobs (invoked by Vercel Cron)
 ```
-GET /api/portal/[token]                                 → resolve token, get member data
-GET /api/portal/[token]/attendance                      → attendance history
-GET /api/portal/[token]/payments                        → payment history
-GET /api/portal/[token]/receipt/:paymentId              → receipt data
-```
-
----
-
-## Implementation Rules (for coding agents)
-
-### MUST follow — no exceptions
-
-1. **Amounts always in paise.** UI shows rupees. API stores paise. Conversion in route handler.
-   ```typescript
-   // In API route:
-   const amount_paise = Math.round(parseFloat(body.amount) * 100)
-   // In UI:
-   import { formatCurrency } from '@zenzo/utils'
-   formatCurrency(payment.amount_paise) // → "₹1,500.00"
-   ```
-
-2. **Tenant isolation on every query.**
-   ```typescript
-   // WRONG:
-   supabase.from('members').select('*').eq('id', memberId)
-   // RIGHT:
-   supabase.from('members').select('*').eq('id', memberId).eq('tenant_id', tenantId)
-   ```
-
-3. **Server Components by default.** Add `"use client"` only for:
-   - Event handlers (onClick, onChange)
-   - Hooks (useState, useEffect)
-   - Browser APIs (navigator, window, localStorage)
-
-4. **API routes validate tenant access.** Every route handler:
-   ```typescript
-   const { user } = await getUser(request)
-   const profile = await getProfile(user.id)
-   if (profile.tenant_id !== params.tenantSlug_resolved_to_id) return 403
-   if (requiresOwner && profile.role !== 'owner') return 403
-   ```
-
-5. **Phone always stored normalised.** Strip spaces, dashes, +91 prefix before storage.
-   Store as 10-digit string: `"9876543210"`, not `"+91 98765 43210"`
-
-6. **Dates in YYYY-MM-DD for storage.** DD MMM YYYY only for display (use formatDate()).
-
-7. **WhatsApp: always use guardian phone if member has guardian_id.**
-   ```typescript
-   const recipient = member.guardian_id
-     ? await getMemberPhone(member.guardian_id)
-     : member.phone
-   ```
-
-8. **RLS is the real access control.** UI role-hiding is UX only.
-   Never query data and filter in application code when RLS can do it at DB level.
-
-9. **Attendance optimistic UI.** Toggle → update local state → fire API in background.
-   On API error → revert state + show toast.
-
-10. **Error messages never leak internals.**
-    - DB errors → log server-side, return generic message to client
-    - Validation errors → specific and actionable ("Phone already registered for Arjun Kumar")
-    - Never return Postgres error codes or stack traces to client
-
-### Naming Conventions
-- Database: `snake_case`
-- TypeScript: `camelCase` for variables, `PascalCase` for types/interfaces/components
-- API routes: kebab-case (`/api/[tenantSlug]/member-plans`)
-- File names: kebab-case (`member-list.tsx`, `use-members.ts`)
-- React Server Components: no suffix. Client components: `.client.tsx` suffix or `"use client"` directive
-
-### File Structure for Features
-```
-apps/web/src/
-  app/(dashboard)/[tenantSlug]/
-    members/
-      page.tsx              ← Server Component (list)
-      new/page.tsx          ← Server Component (form shell)
-      [id]/page.tsx         ← Server Component (profile)
-      _components/          ← co-located client components
-        member-list.client.tsx
-        add-member-form.client.tsx
-  api/
-    [tenantSlug]/
-      members/
-        route.ts            ← GET + POST handlers
-        [id]/route.ts       ← GET + PUT + DELETE handlers
+POST /api/cron/update-membership-statuses  — daily midnight IST
+POST /api/cron/send-payment-reminders      — daily: 3 days before + on due date
+POST /api/cron/send-expiry-warnings        — daily: 7 days before expires_at
 ```
 
-### Supabase Client Usage
-```typescript
-// Server Components / Route Handlers → use SSR client
-import { createServerClient } from '@supabase/ssr'
-
-// Client Components → use browser client
-import { createBrowserClient } from '@supabase/ssr'
-
-// Service operations (webhook, admin) → use service role
-import { createServiceClient } from '@zenzo/database'
+### Member Portal
+```
+GET /api/portal/[token]
+GET /api/portal/[token]/attendance
+GET /api/portal/[token]/payments
 ```
 
 ---
 
-## What We Are NOT Building
+## Implementation Rules (non-negotiable for coding agents)
 
-| Not building | Reason |
-|---|---|
-| Native iOS/Android app | Mobile web (PWA) covers the use case. Saves 6 months. |
-| Dark mode | Not expected by target market. CSS vars ready for future. |
-| Biometric/QR attendance | Fails in practice. Manual toggle builds coach-member rapport. |
-| Accounting integrations | CSV export covers P1 needs. Different buyer persona. |
-| Social login (Google, Apple) | Low demand in Indian market. Adds OAuth complexity. |
-| AI features | Need longitudinal data. Year 2. |
-| Marketplace / member discovery | Different product. |
-| Video / content delivery | Out of scope. This is ops software. |
+1. **No shadow users.** Never create a `club_memberships` row with `status = 'active'` for a user without a Supabase Auth account. The flow is: invite → `pending_invite` → signup → `active`.
 
----
+2. **RLS is the security layer.** Write policies for every table before building routes. Routes check auth (`getUser()`), then RLS handles authorization. Belt-and-suspenders.
 
-## How to Use This File in Dev Sessions
+3. **Supabase client created directly in every function.** Never passed through helpers. See CLAUDE.md Critical Rule #5.
 
-```
-# Start every session:
-"Read CLAUDE.md and FEATURES.md. We're building [feature].
- The spec is in FEATURES.md under [P0.x / P1.x].
- The screen design is in docs/design/[file].
- Start by listing the files to create/modify, then implement."
+4. **Explicit column selects.** `select("id, full_name, phone")` not `select("*")` until types are generated from schema.
 
-# Example:
-"Read CLAUDE.md and FEATURES.md.
- We're building P0.4 — Attendance (the ritual screen).
- Screen spec: docs/design/08-screens-attendance.md.
- Implement the Take Attendance page and API route."
-```
+5. **All amounts in paise.** Input fields accept ₹ (display). Divide by 100 for storage. Multiply by 100 for display via `formatCurrency()`. Never store floats.
+
+6. **Soft deletes everywhere.** `deleted_at TIMESTAMPTZ` on `batches`, `fee_plans`, `club_memberships`. History is always preserved for reports. Filter soft-deleted rows with `.is('deleted_at', null)`.
+
+7. **All API routes: validate auth first, then club access, then process.**
+   ```ts
+   const { data: { user } } = await supabase.auth.getUser()
+   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+   const hasAccess = await checkClubStaff(supabase, user.id, clubId)
+   if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+   ```
+
+8. **Validate all inputs with Zod.** Define schemas in `lib/utils/validation.ts`. Return `{ error: 'Validation failed', code: 'VALIDATION_ERROR', details: {...} }` on failure.
+
+9. **Log all WhatsApp sends.** Every Interakt API call creates a `notifications_log` row. On failure, log `failure_reason`. No retries in Phase 1.
+
+10. **Attendance offline queue.** IndexedDB stores every toggle immediately. Never rely on network for toggle saves. Sync to server in background. Last-write-wins on conflict.
