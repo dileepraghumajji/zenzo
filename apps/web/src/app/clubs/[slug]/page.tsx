@@ -39,6 +39,7 @@ function formatDays(days: string[]): string {
 function formatTime(time: string | null): string {
   if (!time) return "";
   const [h, m] = time.split(":");
+  if (!h || !m) return time;
   const hour = parseInt(h, 10);
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12  = hour % 12 || 12;
