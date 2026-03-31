@@ -1,0 +1,124 @@
+// ─── Member Profile Page ────────────────────────────────────────────────────────
+//
+// Layer 3: Server Component
+// Route: /:clubSlug/members/:memberId  (memberId = users.id)
+//
+// Fetches membership + user details for this club.
+// Passes to MemberProfileClient for tab rendering.
+
+import { notFound } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { MemberProfileClient } from "./_components/member-profile-client";
+import type { MembershipStatus, AttendanceStatus } from "@zenzo/database/enums";
+
+interface Props {
+  params: { clubSlug: string; memberId: string };
+}
+
+export async function generateMetadata({ params }: Props) {
+  return { title: "Member Profile" };
+}
+
+export default async function MemberProfilePage({ params }: Props) {
+  const { clubSlug, memberId } = params;
+  const supabase = createSupabaseServerClient();
+
+  // ── Resolve club ─────────────────────────────────────────────────────────
+  const { data: club, error: clubError } = await supabase
+    .from("clubs")
+    .select("id, name")
+    .eq("slug", clubSlug)
+    .single();
+
+  if (clubError || !club) notFound();
+
+  // ── Fetch membership + user + plan ───────────────────────────────────────
+  const { data: membership, error } = await supabase
+    .from("club_memberships")
+    .select(
+      "id, plan_id, status, joined_at, next_due_date, users(id, full_name, phone, email), fee_plans(name, amount_paise)"
+    )
+    .eq("club_id", club.id)
+    .eq("user_id", params.memberId)
+    .is("deleted_at", null)
+    .single();
+
+  if (error || !membership) notFound();
+
+  // ── Fetch all available plans for this club ────────────────────────────────
+  const { data: availablePlans } = await supabase
+    .from("fee_plans")
+    .select("id, name, amount_paise, billing_cycle")
+    .eq("club_id", club.id)
+    .order("amount_paise");
+
+  // ── Fetch batch names ────────────────────────────────────────────────────
+  const { data: batchRows } = await supabase
+    .from("member_batches")
+    .select("batches(name)")
+    .eq("membership_id", membership.id);
+
+  const batchNames = (batchRows ?? [])
+    .map((r) => r.batches?.name)
+    .filter((n): n is string => Boolean(n));
+
+  // ── Fetch attendance stats (last 30 days) ──────────────────────────────────
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data: attendanceRows } = await supabase
+    .from("attendance_records")
+    .select("id, date, status, batches(name)")
+    .eq("membership_id", membership.id)
+    .gte("date", thirtyDaysAgo)
+    .order("date", { ascending: false });
+
+  const totalSessions  = attendanceRows?.length ?? 0;
+  const presentCount   = attendanceRows?.filter((r) => r.status === "present").length ?? 0;
+  const attendancePct  = totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : null;
+
+  // ── Fetch all payments ───────────────────────────────────────────────────
+  const { data: allPayments } = await supabase
+    .from("payments")
+    .select("id, amount_paise, method, payment_date")
+    .eq("membership_id", membership.id)
+    .order("payment_date", { ascending: false });
+
+  const user = membership.users;
+
+  return (
+    <MemberProfileClient
+      clubSlug={clubSlug}
+      availablePlans={availablePlans ?? []}
+      member={{
+        userId:          params.memberId,
+        membershipId:    membership.id,
+        planId:          membership.plan_id,
+        fullName:        user?.full_name ?? "Unknown",
+        phone:           user?.phone ?? "",
+        email:           user?.email ?? null,
+        status:          membership.status as MembershipStatus,
+        joinedAt:        membership.joined_at,
+        nextDueDate:     membership.next_due_date,
+        planName:        membership.fee_plans?.name ?? null,
+        planAmountPaise: membership.fee_plans?.amount_paise ?? null,
+        batchNames,
+        attendancePct,
+        recentAttendance: (attendanceRows ?? []).map((a) => ({
+          id: a.id,
+          date: a.date,
+          status: a.status as AttendanceStatus,
+          batchName: a.batches?.name ?? null,
+        })),
+        allPayments:  (allPayments ?? []).map((p) => ({
+          id:          p.id,
+          amountPaise: p.amount_paise,
+          method:      p.method,
+          date:        p.payment_date,
+        })),
+      }}
+    />
+  );
+}

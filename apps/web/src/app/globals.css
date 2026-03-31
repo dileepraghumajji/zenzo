@@ -1,3 +1,250 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Semantic Token Layer ────────────────────────────────────────────────────
+   Components use these variables. Never use primitive hex values in components.
+   To retheme Zenzo: update these mappings. Components update automatically.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Surface */
+  --surface-page:    #FFFFFF;   /* stone-0  — page background */
+  --surface-subtle:  #FAF9F7;   /* stone-50 — table headers, sidebars */
+  --surface-raised:  #FFFFFF;   /* stone-0  — cards */
+  --surface-brand:   #FFF6EC;   /* forge-50 — brand-tinted areas */
+
+  /* Border */
+  --border-default:  #E9E7E3;   /* stone-200 */
+  --border-strong:   #D4D0CA;   /* stone-300 */
+  --border-focus:    #EF6014;   /* forge-500 */
+  --border-error:    #DC2626;   /* flame-500 */
+
+  /* Text */
+  --text-primary:    #252320;   /* stone-800 — headings */
+  --text-secondary:  #3C3935;   /* stone-700 — body */
+  --text-tertiary:   #78746C;   /* stone-500 — captions, meta */
+  --text-placeholder:#A8A39A;   /* stone-400 — input placeholder */
+  --text-disabled:   #A8A39A;   /* stone-400 */
+  --text-inverse:    #FFFFFF;   /* on dark/coloured bg */
+  --text-brand:      #C84A08;   /* forge-600 — orange text on white */
+
+  /* Action */
+  --action-primary-bg:       #C84A08;  /* forge-600 */
+  --action-primary-bg-hover: #A13907;  /* forge-700 */
+  --action-primary-text:     #FFFFFF;
+  --action-danger-bg:        #DC2626;  /* flame-500 */
+  --action-danger-bg-hover:  #B91C1C;  /* flame-700 */
+
+  /* Status */
+  --status-success-bg:     #F0FDF5;  /* jade-50  */
+  --status-success-text:   #15803D;  /* jade-700 */
+  --status-success-border: #16A34A;  /* jade-500 */
+  --status-warning-bg:     #FFFBEB;  /* sand-50  */
+  --status-warning-text:   #B45309;  /* sand-700 */
+  --status-warning-border: #D97706;  /* sand-500 */
+  --status-error-bg:       #FFF1F2;  /* flame-50  */
+  --status-error-text:     #B91C1C;  /* flame-700 */
+  --status-error-border:   #DC2626;  /* flame-500 */
+  --status-info-bg:        #EFF9FF;  /* sky-50  */
+  --status-info-text:      #0369A1;  /* sky-700 */
+  --status-info-border:    #0284C7;  /* sky-500 */
+
+  /* Overlay */
+  --overlay-bg: rgba(21, 19, 16, 0.5); /* stone-900 at 50% */
+
+  /* Auth atmospheric glow — top-right corner on auth pages */
+  --auth-glow: radial-gradient(circle, rgba(255, 246, 236, 0.08) 0%, transparent 65%);
+}
+
+/* ─── Dark Mode — "Midnight Forge" ───────────────────────────────────────────
+   The same warm stone palette, but at night. Orange gains gravity in darkness.
+   Achieved entirely via CSS variable overrides — zero component changes needed.
+   ──────────────────────────────────────────────────────────────────────────── */
+.dark {
+  /* Surface — warm charcoal, not cold dark */
+  --surface-page:    #141210;   /* midnight stone */
+  --surface-subtle:  #1A1815;   /* sidebar, subtle areas */
+  --surface-raised:  #242118;   /* cards — clearly above page */
+  --surface-brand:   #2A1A08;   /* forge-tinted dark surface */
+
+  /* Border — barely-there warm dark lines */
+  --border-default:  #2E2A25;
+  --border-strong:   #3D3932;
+  --border-focus:    #EF6014;   /* forge-500 — unchanged, still vivid */
+  --border-error:    #EF4444;   /* slightly lighter for dark bg contrast */
+
+  /* Text — warm whites and grays, never cold */
+  --text-primary:    #EDE8E2;   /* warm off-white — headings */
+  --text-secondary:  #B5B0A8;   /* warm light gray — body */
+  --text-tertiary:   #726D67;   /* warm mid-gray — captions */
+  --text-placeholder:#4A4640;   /* warm dark gray */
+  --text-disabled:   #4A4640;
+  --text-inverse:    #141210;   /* on light/brand backgrounds */
+  --text-brand:      #F88030;   /* forge-400 — more vivid on dark than forge-600 */
+
+  /* Action — forge-600 works on both; hover brightens instead of darkens */
+  --action-primary-bg:       #C84A08;  /* forge-600 — same */
+  --action-primary-bg-hover: #EF6014;  /* forge-500 — brightens on dark (glow effect) */
+  --action-primary-text:     #FFFFFF;
+  --action-danger-bg:        #DC2626;
+  --action-danger-bg-hover:  #EF4444;
+
+  /* Status — dark tinted backgrounds with lighter, vivid text */
+  --status-success-bg:     #0A1A0D;
+  --status-success-text:   #4ADE80;   /* jade-400 — vivid on dark */
+  --status-success-border: #14532D;
+
+  --status-warning-bg:     #1A1005;
+  --status-warning-text:   #FCD34D;   /* sand-300 — vivid on dark */
+  --status-warning-border: #713F12;
+
+  --status-error-bg:       #1A0808;
+  --status-error-text:     #FCA5A5;   /* flame-300 — vivid on dark */
+  --status-error-border:   #7F1D1D;
+
+  --status-info-bg:        #061220;
+  --status-info-text:      #7DD3FC;   /* sky-300 — vivid on dark */
+  --status-info-border:    #0C4A6E;
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.75);
+
+  /* Auth atmospheric glow — ember warmth in darkness */
+  --auth-glow: radial-gradient(circle, rgba(200, 74, 8, 0.12) 0%, transparent 65%);
+}
+
+/* ─── Base Reset ──────────────────────────────────────────────────────────────
+   On top of Tailwind's preflight — Zenzo-specific baseline.
+   ──────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    /* Prevent font size inflation on mobile */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Smooth scrolling — but respect user preference */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    background-color: var(--surface-page);
+    color: var(--text-secondary);
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent horizontal overflow on mobile */
+    overflow-x: hidden;
+  }
+
+  /* Headings use primary text colour */
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  /* Remove default button/input browser styles */
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Focus ring: only on keyboard nav, not mouse clicks */
+  :focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Monetary values: always monospace */
+  .mono,
+  [data-mono] {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* Safe area inset for mobile bottom content */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ─── Utility Layer ───────────────────────────────────────────────────────────
+   Custom utilities not covered by Tailwind.
+   ──────────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Skeleton shimmer animation */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #E9E7E3 25%,   /* stone-200 */
+      #F4F3F0 50%,   /* stone-100 */
+      #E9E7E3 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .dark .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #2E2A25 25%,   /* dark border-default */
+      #3D3932 50%,   /* dark border-strong */
+      #2E2A25 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Hide scrollbar visually but keep functional (tab bar, filter chips) */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Full-width tap target helper (list items, nav items) */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Text truncation */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
