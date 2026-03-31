@@ -1,0 +1,14 @@
+# All files — default reviewer
+* @dileepraghumajji
+
+# Auth & middleware — extra scrutiny
+apps/web/src/middleware.ts @dileepraghumajji
+apps/web/src/lib/auth.ts @dileepraghumajji
+apps/web/src/app/(auth)/ @dileepraghumajji
+apps/web/src/app/api/auth/ @dileepraghumajji
+
+# Database schema & types — must review all migrations/type changes
+packages/database/ @dileepraghumajji
+
+# CI / GitHub config
+.github/ @dileepraghumajji
