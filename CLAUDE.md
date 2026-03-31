@@ -375,6 +375,21 @@ Sprint E (Explore Clubs) complete:
 - **E5** — Nav links: "Explore clubs" added to landing page nav. "Explore clubs →" link added to login + signup auth cards.
 - Added `description: string | null` to `clubs` DB type.
 
+### Session 19 — 2026-03-31
+Sprint Q (Feature completion + Bug fixes) complete:
+- **P0.2 bulk CSV invite** — `members/invite/csv/page.tsx` + `_components/csv-invite-form.tsx`: 3-step (paste/upload → preview + settings → results), parseCsv(), sends to `POST /api/members/invite` per row.
+- **P0.2 bulk actions** — Checkboxes in members list + bulk toolbar (Deactivate/Delete). `POST /api/clubs/[clubId]/members/bulk`. Selected rows highlighted. `Checkbox` and `Switch` added to `@zenzo/ui` using Radix UI primitives.
+- **P0.2 Change Batch** — "Change Batch" action in member profile dropdown + dialog. `update_batch` action in `PATCH /api/clubs/[clubId]/members/[memberId]`.
+- **P0.4 navigate-away guard** — `beforeunload` in take-attendance-client.
+- **P0.4 drop-in attendance** — "Add Drop-in" button + dialog, `GET /api/attendance/[batchId]/drop-in` lookup by phone.
+- **P0.5 auto-expiry cron** — `GET /api/cron/expire-memberships` (Bearer token auth, service client). `vercel.json` schedules at 19:00 UTC (00:30 IST) daily.
+- **P0.6 CSV export + Send Reminders** — Export CSV button in payment history. "Send Reminders to All" dialog with per-member WhatsApp deep links.
+- **P0.9 Settings** — Logo upload (Supabase Storage `club-logos` bucket), Customization form (member_label, progression_enabled, billing_cycle_type), Notification toggles (3 switches). All stored in `clubs.terminology` JSON via `terminology_patch`.
+- **Bug fix: "Unknown" member names** — Root cause: `users` RLS only allowed reading own row; staff couldn't see other users' names via join. Fix: migration `20260331000006_fix_users_rls.sql` adds policies for staff to read member + co-staff user profiles.
+- **Bug fix: Google OAuth names** — `handle_new_user` trigger only read `raw_user_meta_data->>'full_name'`; Google sends `name`. Fixed in same migration to `coalesce(full_name, name, 'User')`.
+- **Bug fix: Invited user names** — `inviteUserByEmail` fires trigger with no name metadata → `full_name = 'User'`. Fixed: invite form now collects "Member Name" (required), passed to API, forwarded as `data.full_name` to `inviteUserByEmail`.
+- **Phone mandatory for Google OAuth** — `auth/callback/route.ts` checks if OAuth user has empty phone → redirects to `/complete-profile`. New `/complete-profile/page.tsx` collects phone (+ corrects name), updates `users` row via browser Supabase client, then routes via `POST /api/auth/profile`.
+
 ### Up Next
 1. Sprint N — Notifications via Resend (email transactionals)
 2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)

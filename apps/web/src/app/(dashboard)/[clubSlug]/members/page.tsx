@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Upload } from "lucide-react";
 import { Button } from "@zenzo/ui";
 import { MembersLoader } from "./_components/members-loader";
 import { MemberListSkeleton } from "./_components/members-client";
@@ -32,16 +32,27 @@ export default function MembersPage({
         <h1 className="text-[24px] font-bold text-foreground leading-tight">
           Members
         </h1>
-        <Link href={`/${clubSlug}/members/invite`}>
-          <Button
-            variant="primary"
-            size="md"
-            icon={<UserPlus className="w-4 h-4" />}
-          >
-            <span className="hidden sm:inline">Add Member</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/${clubSlug}/members/invite/csv`}>
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<Upload className="w-4 h-4" />}
+            >
+              <span className="hidden sm:inline">Bulk Invite</span>
+            </Button>
+          </Link>
+          <Link href={`/${clubSlug}/members/invite`}>
+            <Button
+              variant="primary"
+              size="md"
+              icon={<UserPlus className="w-4 h-4" />}
+            >
+              <span className="hidden sm:inline">Add Member</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* ── Member list with Suspense skeleton ──────────────────────────────── */}

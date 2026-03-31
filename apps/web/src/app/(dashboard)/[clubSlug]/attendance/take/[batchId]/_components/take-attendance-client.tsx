@@ -4,11 +4,15 @@
 //
 // Bulk present/absent toggle for all members in a batch.
 // Submits via POST /api/attendance/[batchId].
+// Navigate-away guard fires when statuses have been modified but not saved.
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, Users } from "lucide-react";
-import { Avatar, Badge, Button, cn } from "@zenzo/ui";
+import { Check, X, Users, UserPlus } from "lucide-react";
+import {
+  Avatar, Badge, Button, Dialog, DialogContent, DialogFooter, DialogClose,
+  FormField, Input, cn,
+} from "@zenzo/ui";
 import { AttendanceStatus } from "@zenzo/database/enums";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -19,6 +23,7 @@ interface BatchMember {
   fullName: string;
   phone: string;
   existingStatus: AttendanceStatus | null;
+  isDropIn?: boolean;
 }
 
 interface TakeAttendanceClientProps {
@@ -38,21 +43,57 @@ export function TakeAttendanceClient({
   batchId,
   batchName,
   date,
-  members,
+  members: initialMembers,
 }: TakeAttendanceClientProps) {
   const router = useRouter();
 
   // Initialise from any pre-existing records
+  const [members, setMembers] = React.useState<BatchMember[]>(initialMembers);
   const [statuses, setStatuses] = React.useState<StatusMap>(() => {
     const init: StatusMap = {};
-    for (const m of members) {
+    for (const m of initialMembers) {
       if (m.existingStatus) init[m.membershipId] = m.existingStatus;
     }
     return init;
   });
 
+  // Track initial state to detect unsaved changes
+  const initialStatuses = React.useRef<StatusMap>(() => {
+    const init: StatusMap = {};
+    for (const m of initialMembers) {
+      if (m.existingStatus) init[m.membershipId] = m.existingStatus;
+    }
+    return init;
+  });
+
+  const hasUnsavedChanges = React.useMemo(() => {
+    const keys = new Set([
+      ...Object.keys(statuses),
+      ...Object.keys(initialStatuses.current),
+    ]);
+    for (const k of keys) {
+      if (statuses[k] !== (initialStatuses.current as StatusMap)[k]) return true;
+    }
+    return false;
+  }, [statuses]);
+
+  // Navigate-away guard
+  React.useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedChanges]);
+
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [showDropInDialog, setShowDropInDialog] = React.useState(false);
+  const [dropInPhone, setDropInPhone] = React.useState("");
+  const [dropInSearching, setDropInSearching] = React.useState(false);
+  const [dropInError, setDropInError] = React.useState("");
 
   const toggle = (membershipId: string) => {
     setStatuses((prev) => {
@@ -78,6 +119,46 @@ export function TakeAttendanceClient({
     (s) => s === AttendanceStatus.Absent
   ).length;
 
+  // Search for a non-batch club member by phone to add as drop-in
+  const handleDropInSearch = async () => {
+    const phone = dropInPhone.trim();
+    if (phone.length !== 10) {
+      setDropInError("Enter a valid 10-digit phone number.");
+      return;
+    }
+    setDropInSearching(true);
+    setDropInError("");
+    try {
+      const res = await fetch(
+        `/api/attendance/${batchId}/drop-in?phone=${phone}&clubSlug=${clubSlug}&date=${date}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setDropInError(data.error ?? "Member not found.");
+        return;
+      }
+      // Add to members list if not already there
+      setMembers((prev) => {
+        if (prev.some((m) => m.membershipId === data.membershipId)) return prev;
+        return [...prev, {
+          membershipId: data.membershipId,
+          userId:       data.userId,
+          fullName:     data.fullName,
+          phone:        data.phone,
+          existingStatus: null,
+          isDropIn: true,
+        }];
+      });
+      setStatuses((prev) => ({ ...prev, [data.membershipId]: AttendanceStatus.Present }));
+      setDropInPhone("");
+      setShowDropInDialog(false);
+    } catch {
+      setDropInError("Network error.");
+    } finally {
+      setDropInSearching(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setError("");
@@ -85,6 +166,7 @@ export function TakeAttendanceClient({
       const records = members.map((m) => ({
         membership_id: m.membershipId,
         status: statuses[m.membershipId] ?? AttendanceStatus.Unmarked,
+        is_drop_in: m.isDropIn ?? false,
       }));
 
       const res = await fetch(`/api/attendance/${batchId}`, {
@@ -142,7 +224,7 @@ export function TakeAttendanceClient({
       </div>
 
       {/* ── Bulk actions ────────────────────────────────────────────────────── */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button
           variant="secondary"
           size="sm"
@@ -156,6 +238,14 @@ export function TakeAttendanceClient({
           onClick={() => markAll(AttendanceStatus.Absent)}
         >
           Mark All Absent
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<UserPlus className="size-3.5" />}
+          onClick={() => setShowDropInDialog(true)}
+        >
+          Add Drop-in
         </Button>
       </div>
 
@@ -183,9 +273,14 @@ export function TakeAttendanceClient({
                 <div className="flex items-center gap-3">
                   <Avatar name={m.fullName} size="sm" />
                   <div>
-                    <p className="text-[14px] font-medium text-foreground">
-                      {m.fullName}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[14px] font-medium text-foreground">
+                        {m.fullName}
+                      </p>
+                      {m.isDropIn && (
+                        <Badge variant="info" label="Drop-in" size="sm" />
+                      )}
+                    </div>
                     <p className="text-[12px] text-muted font-mono">
                       {m.phone}
                     </p>
@@ -236,6 +331,46 @@ export function TakeAttendanceClient({
           {isSaving ? "Saving..." : "Save Attendance"}
         </Button>
       </div>
+
+      {/* ── Drop-in dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={showDropInDialog} onOpenChange={(v) => {
+        setShowDropInDialog(v);
+        setDropInPhone("");
+        setDropInError("");
+      }}>
+        <DialogContent title="Add Drop-in">
+          <div className="space-y-4 py-2">
+            <p className="text-[13px] text-muted">
+              Search for a club member by phone number to mark as a drop-in for today&apos;s session.
+            </p>
+            <FormField label="Phone Number" htmlFor="dropInPhone">
+              <Input
+                id="dropInPhone"
+                type="tel"
+                value={dropInPhone}
+                onChange={(e) => setDropInPhone(e.target.value)}
+                placeholder="10-digit mobile"
+                maxLength={10}
+              />
+            </FormField>
+            {dropInError && (
+              <p className="text-[13px] text-error-foreground">{dropInError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              disabled={dropInSearching || dropInPhone.length !== 10}
+              onClick={handleDropInSearch}
+            >
+              {dropInSearching ? "Searching..." : "Add Drop-in"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

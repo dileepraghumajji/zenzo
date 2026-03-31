@@ -5,10 +5,12 @@ export { cn } from "./lib/cn";
 export { Avatar }       from "./components/avatar";
 export { Badge }        from "./components/badge";
 export { Button }       from "./components/button";
+export { Checkbox }     from "./components/checkbox";
 export { FilterChip }   from "./components/filter-chip";
 export { IconButton }   from "./components/icon-button";
 export { Input }        from "./components/input";
 export { SearchInput }  from "./components/search-input";
+export { Switch }       from "./components/switch";
 
 // ─── Molecules ────────────────────────────────────────────────────────────────
 export { FormField }    from "./components/form-field";
@@ -85,8 +87,10 @@ export {
 export type { AvatarProps }      from "./components/avatar";
 export type { BadgeProps }       from "./components/badge";
 export type { ButtonProps }      from "./components/button";
+export type { CheckboxProps }    from "./components/checkbox";
 export type { FilterChipProps }  from "./components/filter-chip";
 export type { IconButtonProps }  from "./components/icon-button";
 export type { InputProps }       from "./components/input";
 export type { SearchInputProps } from "./components/search-input";
+export type { SwitchProps }      from "./components/switch";
 export type { FormFieldProps }   from "./components/form-field";

@@ -22,7 +22,7 @@ import {
   SelectItem,
 } from "@zenzo/ui";
 import { formatCurrency } from "@zenzo/utils";
-import { Mail, CheckCircle } from "lucide-react";
+import { Mail, CheckCircle, User } from "lucide-react";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ interface InviteFormProps {
 export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   const router = useRouter();
 
+  const [fullName, setFullName] = React.useState("");
   const [email,   setEmail]   = React.useState("");
   const [batchId, setBatchId] = React.useState("");
   const [planId,  setPlanId]  = React.useState("");
@@ -63,6 +64,7 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   // ── Validation ──────────────────────────────────────────────────────────────
   function validate() {
     const next: Record<string, string> = {};
+    if (!fullName.trim())                                next.fullName = "Member name is required";
     if (!email.trim())                                   next.email   = "Email address is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email   = "Enter a valid email address";
     if (!batchId)                                        next.batchId = "Select a batch";
@@ -85,6 +87,7 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clubSlug,
+          fullName: fullName.trim(),
           email: email.trim().toLowerCase(),
           batchId,
           planId,
@@ -125,6 +128,29 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+
+      {/* ── Full Name ─────────────────────────────────────────────────────── */}
+      <FormField
+        label="Member Name"
+        htmlFor="fullName"
+        required
+        error={errors.fullName}
+      >
+        <Input
+          id="fullName"
+          type="text"
+          inputMode="text"
+          placeholder="Rahul Sharma"
+          value={fullName}
+          onChange={(e) => {
+            setFullName(e.target.value);
+            setApiState("idle");
+          }}
+          error={!!errors.fullName}
+          prefix={<User />}
+          autoComplete="off"
+        />
+      </FormField>
 
       {/* ── Email ─────────────────────────────────────────────────────────── */}
       <FormField

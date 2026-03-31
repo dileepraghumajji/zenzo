@@ -31,6 +31,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 type Body = {
   clubSlug?: string;
+  fullName?: string;
   email?: string;
   batchId?: string;
   planId?: string;
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
   // ── 2. Parse + validate body ────────────────────────────────────────────────
   const body = (await request.json()) as Body;
   const clubSlug  = body.clubSlug?.trim() ?? "";
+  const fullName  = body.fullName?.trim() ?? "";
   const email     = body.email?.trim().toLowerCase() ?? "";
   const batchId   = body.batchId?.trim() ?? "";
   const planId    = body.planId?.trim() ?? "";
@@ -130,8 +132,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Send Supabase auth invite email — redirects to /signup?token=xxx
+    // Pass full_name so handle_new_user trigger populates users.full_name.
     await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${APP_URL}/signup?token=${token}`,
+      data: { full_name: fullName || email.split("@")[0] },
     });
 
     return NextResponse.json({ status: "invite_sent", inviteId: invite.id });

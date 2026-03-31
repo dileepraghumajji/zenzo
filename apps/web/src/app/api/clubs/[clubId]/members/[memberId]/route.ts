@@ -17,7 +17,7 @@ export async function PATCH(
 
   const body = await request.json();
 
-  if (!body || !["deactivate", "reactivate", "update_plan"].includes(body.action)) {
+  if (!body || !["deactivate", "reactivate", "update_plan", "update_batch"].includes(body.action)) {
     return NextResponse.json(
       {
         error: "Validation failed - invalid action",
@@ -79,6 +79,26 @@ export async function PATCH(
       .eq("club_id", clubId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  // ── Handle Update Batch ──────────────────────────────────────────────────
+  if (body.action === "update_batch") {
+    const { batchId } = body;
+    if (!batchId) return NextResponse.json({ error: "batchId is required" }, { status: 400 });
+
+    // Remove all existing batch assignments for this membership
+    await supabase
+      .from("member_batches")
+      .delete()
+      .eq("membership_id", params.memberId);
+
+    // Insert new batch assignment
+    const { error: insertError } = await supabase
+      .from("member_batches")
+      .insert({ membership_id: params.memberId, batch_id: batchId });
+
+    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
     return NextResponse.json({ success: true });
   }
 

@@ -22,9 +22,14 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { name, city, phone, business_type } = body;
+  const { name, city, phone, business_type, logo_url, terminology_patch } = body;
 
-  if (!name?.trim()) {
+  // At least one meaningful field must be present
+  if (!name && logo_url === undefined && !terminology_patch) {
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
+  if (name !== undefined && !name?.trim()) {
     return NextResponse.json({ error: "Club name is required." }, { status: 400 });
   }
 
@@ -36,7 +41,7 @@ export async function PATCH(
   const isUuid = /^[0-9a-f-]{36}$/i.test(params.clubId);
   const { data: club } = await supabase
     .from("clubs")
-    .select("id")
+    .select("id, terminology")
     .eq(isUuid ? "id" : "slug", params.clubId)
     .single();
 
@@ -53,14 +58,33 @@ export async function PATCH(
 
   if (!staff) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
+  // Build update payload
+  type ClubUpdate = {
+    name?: string;
+    city?: string | null;
+    phone?: string | null;
+    business_type?: string;
+    logo_url?: string | null;
+    terminology?: Record<string, unknown>;
+  };
+
+  const update: ClubUpdate = {};
+
+  if (name)          update.name          = name.trim();
+  if (city !== undefined)  update.city    = city?.trim() || null;
+  if (phone !== undefined) update.phone   = phone?.trim() || null;
+  if (business_type) update.business_type = business_type;
+  if (logo_url !== undefined) update.logo_url = logo_url;
+
+  // Merge terminology_patch into existing terminology JSON
+  if (terminology_patch && typeof terminology_patch === "object") {
+    const existing = (club.terminology ?? {}) as Record<string, unknown>;
+    update.terminology = { ...existing, ...terminology_patch };
+  }
+
   const { error } = await supabase
     .from("clubs")
-    .update({
-      name:          name.trim(),
-      city:          city?.trim() || null,
-      phone:         phone?.trim() || null,
-      business_type: business_type ?? undefined,
-    })
+    .update(update)
     .eq("id", club.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
