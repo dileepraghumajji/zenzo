@@ -52,15 +52,27 @@ export default async function MemberProfilePage({ params }: Props) {
     .eq("club_id", club.id)
     .order("amount_paise");
 
-  // ── Fetch batch names ────────────────────────────────────────────────────
+  // ── Fetch all available batches for this club ─────────────────────────────
+  const { data: availableBatches } = await supabase
+    .from("batches")
+    .select("id, name")
+    .eq("club_id", club.id)
+    .is("deleted_at", null)
+    .order("name");
+
+  // ── Fetch member's current batch assignments ─────────────────────────────
   const { data: batchRows } = await supabase
     .from("member_batches")
-    .select("batches(name)")
+    .select("id, batch_id, batches(name)")
     .eq("membership_id", membership.id);
 
   const batchNames = (batchRows ?? [])
     .map((r) => r.batches?.name)
     .filter((n): n is string => Boolean(n));
+
+  const currentBatchIds = (batchRows ?? [])
+    .map((r) => r.batch_id)
+    .filter((id): id is string => Boolean(id));
 
   // ── Fetch attendance stats (last 30 days) ──────────────────────────────────
   const now = new Date();
@@ -92,6 +104,8 @@ export default async function MemberProfilePage({ params }: Props) {
     <MemberProfileClient
       clubSlug={clubSlug}
       availablePlans={availablePlans ?? []}
+      availableBatches={(availableBatches ?? []).map((b) => ({ id: b.id, name: b.name }))}
+      currentBatchIds={currentBatchIds}
       member={{
         userId:          params.memberId,
         membershipId:    membership.id,

@@ -9,11 +9,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CreditCard } from "lucide-react";
+import { AlertCircle, CreditCard, Download, Bell } from "lucide-react";
 import {
   Avatar,
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogClose,
+  DialogFooter,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -56,26 +60,61 @@ interface PaymentsClientProps {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function downloadCsv(rows: PaymentRecord[]) {
+  const header = "Date,Member,Method,Amount (₹),Note";
+  const lines = rows.map((p) =>
+    [
+      p.date,
+      `"${p.memberName.replace(/"/g, '""')}"`,
+      p.method,
+      (p.amountPaise / 100).toFixed(2),
+      `"${(p.note ?? "").replace(/"/g, '""')}"`,
+    ].join(",")
+  );
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `payments-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────────
+
 export function PaymentsClient({
   clubSlug,
   overdueMembers,
   paymentHistory,
 }: PaymentsClientProps) {
   const router = useRouter();
-  const [recordingFor, setRecordingFor] = React.useState<OverdueMember | null>(
-    null
-  );
+  const [recordingFor, setRecordingFor] = React.useState<OverdueMember | null>(null);
+  const [showReminders, setShowReminders] = React.useState(false);
 
   return (
     <>
       <div className="px-4 py-6 lg:px-8 lg:py-8 max-w-5xl mx-auto space-y-6">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div>
-          <h1 className="text-[26px] font-bold text-foreground">Payments</h1>
-          <p className="text-[13px] text-muted mt-0.5">
-            Track dues and payment history.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-[26px] font-bold text-foreground">Payments</h1>
+            <p className="text-[13px] text-muted mt-0.5">
+              Track dues and payment history.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Download className="size-3.5" />}
+            onClick={() => downloadCsv(paymentHistory)}
+            disabled={paymentHistory.length === 0}
+          >
+            Export CSV
+          </Button>
         </div>
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
@@ -94,6 +133,18 @@ export function PaymentsClient({
 
           {/* ── Overdue tab ────────────────────────────────────────────── */}
           <TabsContent value="overdue" className="mt-6">
+            {overdueMembers.length > 0 && (
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Bell className="size-3.5" />}
+                  onClick={() => setShowReminders(true)}
+                >
+                  Send Reminders to All
+                </Button>
+              </div>
+            )}
             {overdueMembers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="w-14 h-14 rounded-full bg-success-subtle flex items-center justify-center mb-4">
@@ -324,6 +375,46 @@ export function PaymentsClient({
           }}
         />
       )}
+
+      {/* ── Send Reminders Dialog ─────────────────────────────────────────── */}
+      <Dialog open={showReminders} onOpenChange={setShowReminders}>
+        <DialogContent title="Send Payment Reminders">
+          <div className="space-y-3 py-1 max-h-[60vh] overflow-y-auto">
+            <p className="text-[13px] text-muted">
+              Open WhatsApp for each overdue member to send a reminder.
+            </p>
+            {overdueMembers.map((m) => {
+              const msg = encodeURIComponent(
+                `Hi ${m.fullName.split(" ")[0]}, your membership fee of ${m.planAmountPaise ? formatCurrency(m.planAmountPaise) : "outstanding amount"} is overdue${m.daysOverdue > 0 ? ` by ${m.daysOverdue} days` : ""}. Please renew to continue your sessions. Thank you!`
+              );
+              return (
+                <div
+                  key={m.membershipId}
+                  className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0"
+                >
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">{m.fullName}</p>
+                    <p className="text-[12px] text-muted font-mono">{m.phone}</p>
+                  </div>
+                  <a
+                    href={`https://wa.me/91${m.phone}?text=${msg}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-[12px] font-medium text-success-foreground hover:underline"
+                  >
+                    Send →
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

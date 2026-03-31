@@ -14,11 +14,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreVertical, UserPlus, Users, User, Pencil, MessageCircle } from "lucide-react";
+import { MoreVertical, UserPlus, Users, User, Pencil, MessageCircle, Trash2, UserX } from "lucide-react";
 import {
   Avatar,
   Badge,
   Button,
+  Checkbox,
   FilterChip,
   SearchInput,
   IconButton,
@@ -27,6 +28,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogClose,
   cn,
 } from "@zenzo/ui";
 import { formatCurrency } from "@zenzo/utils";
@@ -89,6 +94,36 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [page, setPage]                 = React.useState(1);
 
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  const [selected, setSelected]         = React.useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm]   = React.useState<"deactivate" | "delete" | null>(null);
+  const [isBulkActing, setIsBulkActing] = React.useState(false);
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const clearSelection = () => setSelected(new Set());
+
+  const runBulkAction = async (action: "deactivate" | "delete") => {
+    setIsBulkActing(true);
+    try {
+      await fetch(`/api/clubs/${clubSlug}/members/bulk`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action, membershipIds: Array.from(selected) }),
+      });
+      clearSelection();
+      router.refresh();
+    } finally {
+      setIsBulkActing(false);
+      setBulkConfirm(null);
+    }
+  };
+
   // Debounce search 300ms
   React.useEffect(() => {
     const id = setTimeout(() => setDebounced(search.trim().toLowerCase()), 300);
@@ -115,6 +150,25 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
   const currentPage = Math.min(page, totalPages);
   const start       = (currentPage - 1) * PAGE_SIZE;
   const paginated   = filtered.slice(start, start + PAGE_SIZE);
+
+  const allPageSelected = paginated.length > 0 && paginated.every((m) => selected.has(m.id));
+  const someSelected    = selected.size > 0;
+
+  const toggleAll = () => {
+    if (allPageSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        paginated.forEach((m) => next.delete(m.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        paginated.forEach((m) => next.add(m.id));
+        return next;
+      });
+    }
+  };
 
   // ── Empty state ──────────────────────────────────────────────────────────────
   if (members.length === 0) {
@@ -167,18 +221,53 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
         </div>
       </div>
 
-      {/* ── Result count ─────────────────────────────────────────────────────── */}
-      <p className="text-[13px] text-muted">
-        {filtered.length === members.length
-          ? `${members.length} member${members.length !== 1 ? "s" : ""}`
-          : `${filtered.length} of ${members.length} members`}
-      </p>
+      {/* ── Result count + bulk toolbar ──────────────────────────────────────── */}
+      <div className="flex items-center justify-between min-h-[28px]">
+        <p className="text-[13px] text-muted">
+          {filtered.length === members.length
+            ? `${members.length} member${members.length !== 1 ? "s" : ""}`
+            : `${filtered.length} of ${members.length} members`}
+        </p>
+
+        {someSelected && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-muted">{selected.size} selected</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<UserX className="size-3.5" />}
+              onClick={() => setBulkConfirm("deactivate")}
+            >
+              Deactivate
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-error-foreground hover:bg-error-subtle"
+              icon={<Trash2 className="size-3.5" />}
+              onClick={() => setBulkConfirm("delete")}
+            >
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* ── Desktop table ────────────────────────────────────────────────────── */}
       <div className="hidden lg:block rounded-xl border border-border overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-subtle border-b border-border">
+              <th className="w-10 pl-4 py-3">
+                <Checkbox
+                  checked={allPageSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all on page"
+                />
+              </th>
               {(["Name", "Phone", "Batch", "Status", "Plan"] as const).map((col) => (
                 <th
                   key={col}
@@ -193,7 +282,7 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
           <tbody className="divide-y divide-border">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-[13px] text-muted">
+                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-muted">
                   No members match your search.
                 </td>
               </tr>
@@ -201,11 +290,24 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
               paginated.map((member) => {
                 const statusCfg = STATUS_CONFIG[member.status];
                 const profileHref = `/${clubSlug}/members/${member.userId}`;
+                const isChecked = selected.has(member.id);
                 return (
                   <tr
                     key={member.id}
-                    className="hover:bg-surface-subtle transition-colors duration-100 group"
+                    className={cn(
+                      "transition-colors duration-100 group",
+                      isChecked ? "bg-primary/5" : "hover:bg-surface-subtle"
+                    )}
                   >
+                    {/* Checkbox */}
+                    <td className="pl-4 py-3 w-10">
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => toggleOne(member.id)}
+                        aria-label={`Select ${member.fullName}`}
+                      />
+                    </td>
+
                     {/* Name + avatar */}
                     <td className="px-4 py-3">
                       <Link
@@ -370,6 +472,49 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
           </div>
         </div>
       )}
+
+      {/* ── Bulk confirm dialogs ─────────────────────────────────────────────── */}
+      <Dialog open={bulkConfirm === "deactivate"} onOpenChange={(v) => !v && setBulkConfirm(null)}>
+        <DialogContent title="Deactivate Members">
+          <p className="text-[14px] text-foreground">
+            Deactivate <strong>{selected.size}</strong> selected member{selected.size !== 1 ? "s" : ""}?
+          </p>
+          <p className="text-[13px] text-muted mt-1">
+            Their membership status will be set to Expired.
+          </p>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
+            <Button
+              variant="danger"
+              disabled={isBulkActing}
+              onClick={() => runBulkAction("deactivate")}
+            >
+              {isBulkActing ? "Deactivating..." : "Deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkConfirm === "delete"} onOpenChange={(v) => !v && setBulkConfirm(null)}>
+        <DialogContent title="Delete Members">
+          <p className="text-[14px] text-foreground">
+            Delete <strong>{selected.size}</strong> selected member{selected.size !== 1 ? "s" : ""}?
+          </p>
+          <p className="text-[13px] text-muted mt-1">
+            This soft-deletes their membership records. Payment and attendance history is preserved.
+          </p>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
+            <Button
+              variant="danger"
+              disabled={isBulkActing}
+              onClick={() => runBulkAction("delete")}
+            >
+              {isBulkActing ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

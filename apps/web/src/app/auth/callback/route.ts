@@ -33,16 +33,31 @@ export async function GET(request: Request) {
 
     const { error, data } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
+      // For OAuth providers, check if profile is complete (phone required).
+      // Email+password signup always collects phone upfront.
+      const provider = data.user.app_metadata?.provider;
+      if (provider && provider !== 'email') {
+        const { data: profile } = await supabase
+          .from("users")
+          .select("phone")
+          .eq("id", data.user.id)
+          .single();
+
+        if (!profile?.phone) {
+          return NextResponse.redirect(`${origin}/complete-profile`);
+        }
+      }
+
       // Find all clubs this user is staff at
       const { data: staff } = await supabase
         .from("club_staff")
         .select("role, club_id")
         .eq("user_id", data.user.id);
-      
+
       if (!staff || staff.length === 0) {
         return NextResponse.redirect(`${origin}/portal`);
       }
-      
+
       if (staff.length === 1) {
         // get club slug
         const firstStaff = staff[0];
@@ -52,13 +67,13 @@ export async function GET(request: Request) {
             .select("slug")
             .eq("id", firstStaff.club_id)
             .single();
-          
+
           if (club) {
             return NextResponse.redirect(`${origin}/${club.slug}/dashboard`);
           }
         }
       }
-      
+
       return NextResponse.redirect(`${origin}/clubs`);
     }
   }

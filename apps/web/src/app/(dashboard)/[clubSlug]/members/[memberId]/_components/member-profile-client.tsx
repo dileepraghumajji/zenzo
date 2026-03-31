@@ -16,6 +16,7 @@ import {
   Pencil,
   UserMinus,
   CreditCard,
+  CalendarDays,
 } from "lucide-react";
 import {
   Avatar,
@@ -87,10 +88,17 @@ interface AvailablePlan {
   billing_cycle: string;
 }
 
+interface AvailableBatch {
+  id: string;
+  name: string;
+}
+
 interface MemberProfileClientProps {
   clubSlug: string;
   member: MemberDetail;
   availablePlans: AvailablePlan[];
+  availableBatches: AvailableBatch[];
+  currentBatchIds: string[];
 }
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -108,33 +116,37 @@ const STATUS_CONFIG: Record<
 
 // ─── MemberProfileClient ───────────────────────────────────────────────────────
 
-export function MemberProfileClient({ clubSlug, member, availablePlans }: MemberProfileClientProps) {
+export function MemberProfileClient({ clubSlug, member, availablePlans, availableBatches, currentBatchIds }: MemberProfileClientProps) {
   const router = useRouter();
   const statusCfg = STATUS_CONFIG[member.status] || { label: "Deleted", variant: "neutral" };
   const [isDeactivating, setIsDeactivating] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isUpdatingPlan, setIsUpdatingPlan] = React.useState(false);
-  const [isRecordingPayment, setIsRecordingPayment] = React.useState(false);
+  const [isUpdatingBatch, setIsUpdatingBatch] = React.useState(false);
 
   // Modal states
   const [showDeactivateDealog, setShowDeactivateDialog] = React.useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [showPlanDialog, setShowPlanDialog] = React.useState(false);
+  const [showBatchDialog, setShowBatchDialog] = React.useState(false);
   const [showPaymentModal, setShowPaymentModal] = React.useState(false);
 
   const [selectedPlanId, setSelectedPlanId] = React.useState(member.planId ?? "");
+  const [selectedBatchId, setSelectedBatchId] = React.useState(currentBatchIds[0] ?? "");
 
-  const performAction = async (actionType: "deactivate" | "delete" | "update_plan") => {
+  const performAction = async (actionType: "deactivate" | "delete" | "update_plan" | "update_batch") => {
     try {
-      if (actionType === "deactivate") setIsDeactivating(true);
-      if (actionType === "delete") setIsDeleting(true);
-      if (actionType === "update_plan") setIsUpdatingPlan(true);
+      if (actionType === "deactivate")   setIsDeactivating(true);
+      if (actionType === "delete")       setIsDeleting(true);
+      if (actionType === "update_plan")  setIsUpdatingPlan(true);
+      if (actionType === "update_batch") setIsUpdatingBatch(true);
 
       const method = actionType === "delete" ? "DELETE" : "PATCH";
-      let body: any = undefined;
+      let body: Record<string, string> | undefined;
 
-      if (actionType === "deactivate") body = { action: "deactivate" };
-      if (actionType === "update_plan") body = { action: "update_plan", planId: selectedPlanId };
+      if (actionType === "deactivate")   body = { action: "deactivate" };
+      if (actionType === "update_plan")  body = { action: "update_plan",  planId:  selectedPlanId };
+      if (actionType === "update_batch") body = { action: "update_batch", batchId: selectedBatchId };
 
       const res = await fetch(`/api/clubs/${clubSlug}/members/${member.membershipId}`, {
         method,
@@ -147,7 +159,8 @@ export function MemberProfileClient({ clubSlug, member, availablePlans }: Member
       setShowDeactivateDialog(false);
       setShowDeleteDialog(false);
       setShowPlanDialog(false);
-      router.refresh(); // Refresh data
+      setShowBatchDialog(false);
+      router.refresh();
     } catch (err) {
       console.error(err);
       alert("Something went wrong");
@@ -155,6 +168,7 @@ export function MemberProfileClient({ clubSlug, member, availablePlans }: Member
       setIsDeactivating(false);
       setIsDeleting(false);
       setIsUpdatingPlan(false);
+      setIsUpdatingBatch(false);
     }
   };
 
@@ -254,6 +268,15 @@ export function MemberProfileClient({ clubSlug, member, availablePlans }: Member
                   }}
                 >
                   Change Fee Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  icon={<CalendarDays className="size-4" />}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowBatchDialog(true);
+                  }}
+                >
+                  Change Batch
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -529,6 +552,41 @@ export function MemberProfileClient({ clubSlug, member, availablePlans }: Member
               onClick={() => performAction("update_plan")}
             >
               {isUpdatingPlan ? "Updating..." : "Update Plan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change Batch Dialog ──────────────────────────────────────────── */}
+      <Dialog open={showBatchDialog} onOpenChange={setShowBatchDialog}>
+        <DialogContent title="Change Batch">
+          <div className="space-y-4 py-2">
+            <p className="text-[14px] text-muted">
+              Select a new batch for <strong>{member.fullName}</strong>. This replaces all current batch assignments.
+            </p>
+            <FormField label="Batch">
+              <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                <SelectTrigger id="batchId" placeholder="Select batch…" />
+                <SelectContent>
+                  {availableBatches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              disabled={isUpdatingBatch || !selectedBatchId}
+              onClick={() => performAction("update_batch")}
+            >
+              {isUpdatingBatch ? "Updating..." : "Update Batch"}
             </Button>
           </DialogFooter>
         </DialogContent>
