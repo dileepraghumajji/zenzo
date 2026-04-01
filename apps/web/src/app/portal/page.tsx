@@ -1,59 +1,71 @@
 // /portal — member home
 //
-// If user has memberships: list clubs they belong to.
-// If no memberships: empty state with CTAs.
+// Dark consumer experience: greeting, rich club cards, urgency indicators.
+// All colours from semantic tokens — .dark class set by layout.
 
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, Plus, Search, Compass } from "lucide-react";
+import { Building2, Plus, Search, Compass, ChevronRight, Clock } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate } from "@zenzo/utils";
 
-// ─── Status badge ───────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    active:  "bg-success-subtle text-success-foreground",
-    overdue: "bg-warning-subtle text-warning-foreground",
-    expired: "bg-surface-subtle text-muted",
-    pending_invite: "bg-primary-subtle text-brand",
-  };
-  const labels: Record<string, string> = {
-    active: "Active",
-    overdue: "Overdue",
-    expired: "Expired",
-    pending_invite: "Pending",
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-caption font-medium ${styles[status] ?? "bg-surface-subtle text-muted"}`}>
-      {labels[status] ?? status}
-    </span>
-  );
-}
-
-// ─── Skeleton ───────────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function PortalSkeleton() {
   return (
-    <div className="space-y-3">
-      {[1, 2].map((i) => (
-        <div key={i} className="skeleton-shimmer rounded-xl h-24 w-full" />
-      ))}
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
+      <div className="skeleton-shimmer h-7 w-44 rounded-lg" />
+      <div className="skeleton-shimmer h-4 w-32 rounded" />
+      <div className="space-y-3 mt-6">
+        <div className="skeleton-shimmer h-3 w-16 rounded" />
+        {[1, 2].map((i) => (
+          <div key={i} className="skeleton-shimmer rounded-xl h-20 w-full" />
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─── Memberships loader ──────────────────────────────────────────────────────
+// ─── Status pill ──────────────────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: string }) {
+  type PillConfig = { pill: string; dot: string; label: string };
+  const fallback: PillConfig = { pill: "bg-surface-subtle text-muted", dot: "bg-muted", label: "Expired" };
+  const map: Record<string, PillConfig> = {
+    active:         { pill: "bg-success text-success-foreground",     dot: "bg-success-foreground",  label: "Active"  },
+    overdue:        { pill: "bg-warning text-warning-foreground",     dot: "bg-warning-foreground",  label: "Overdue" },
+    expired:        fallback,
+    pending_invite: { pill: "bg-primary-subtle text-brand",           dot: "bg-brand",               label: "Pending" },
+  };
+  const c = map[status] ?? fallback;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label font-medium ${c.pill}`}>
+      <span className={`size-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  );
+}
+
+// ─── Membership list ──────────────────────────────────────────────────────────
 
 async function MembershipList() {
   const supabase = createSupabaseServerClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("full_name")
+    .eq("id", user.id)
+    .single();
+
+  const firstName = profile?.full_name?.split(" ")[0] ?? "there";
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const { data: memberships } = await supabase
     .from("club_memberships")
@@ -63,7 +75,7 @@ async function MembershipList() {
     .order("joined_at", { ascending: false });
 
   if (!memberships || memberships.length === 0) {
-    return <EmptyState />;
+    return <EmptyState firstName={firstName} />;
   }
 
   const clubIds = memberships.map((m) => m.club_id);
@@ -75,79 +87,133 @@ async function MembershipList() {
   const clubMap = new Map((clubs ?? []).map((c) => [c.id, c]));
 
   return (
-    <div className="space-y-3">
-      <h2 className="text-h3 text-heading">Your clubs</h2>
-      {memberships.map((m) => {
-        const club = clubMap.get(m.club_id);
-        if (!club) return null;
-        return (
-          <Link
-            key={m.id}
-            href={`/portal/${club.slug}`}
-            className="block bg-surface-raised border border-border rounded-xl px-5 py-4 hover:border-brand/40 transition-colors"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-body font-semibold text-heading truncate">{club.name}</p>
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      {/* Greeting */}
+      <div>
+        <h1 className="text-h1 font-bold text-heading">
+          {greeting}, {firstName}
+        </h1>
+        <p className="text-body text-muted mt-1">Here&apos;s your fitness journey</p>
+      </div>
+
+      {/* Club list */}
+      <div className="space-y-3">
+        <p className="text-label text-muted uppercase tracking-wider">Your clubs</p>
+
+        {memberships.map((m) => {
+          const club = clubMap.get(m.club_id);
+          if (!club) return null;
+
+          const daysUntilDue = m.next_due_date
+            ? Math.ceil((new Date(m.next_due_date).getTime() - Date.now()) / 86400000)
+            : null;
+          const isUrgent = daysUntilDue !== null && daysUntilDue <= 5;
+          const isOverdue = daysUntilDue !== null && daysUntilDue < 0;
+
+          return (
+            <Link
+              key={m.id}
+              href={`/portal/${club.slug}`}
+              className="group flex items-center gap-4 p-4 bg-surface-raised border border-border rounded-xl hover:border-brand/40 hover:bg-surface-subtle transition-all"
+            >
+              <div className="size-11 rounded-xl bg-primary-subtle flex items-center justify-center shrink-0">
+                <Building2 className="size-5 text-brand" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-body font-semibold text-heading truncate">{club.name}</p>
+                  <StatusPill status={m.status} />
+                </div>
                 {m.next_due_date && (
-                  <p className="text-caption text-muted mt-0.5">
-                    Due {formatDate(m.next_due_date)}
+                  <p
+                    className={`text-caption flex items-center gap-1 font-medium ${
+                      isOverdue ? "text-error-foreground" : isUrgent ? "text-warning-foreground" : "text-muted"
+                    }`}
+                  >
+                    <Clock className="size-3" />
+                    {isOverdue
+                      ? `${Math.abs(daysUntilDue!)} days overdue`
+                      : daysUntilDue === 0
+                      ? "Due today"
+                      : `Due ${formatDate(m.next_due_date)}`}
                   </p>
                 )}
               </div>
-              <StatusBadge status={m.status} />
-            </div>
+
+              <ChevronRight className="size-4 text-muted group-hover:text-brand transition-colors shrink-0" />
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Quick links */}
+      <div className="flex gap-2">
+        {[
+          { href: "/portal/invites", icon: Search,  label: "Invites" },
+          { href: "/onboarding",     icon: Plus,    label: "New Club" },
+          { href: "/explore",        icon: Compass, label: "Explore" },
+        ].map(({ href, icon: Icon, label }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-surface-raised border border-border text-caption font-medium text-muted hover:border-brand/40 hover:text-brand transition-all"
+          >
+            <Icon className="size-3.5" />
+            {label}
           </Link>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
+// ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ firstName }: { firstName: string }) {
   return (
-    <div className="text-center py-16 space-y-6">
-      <div className="size-16 rounded-full bg-primary-subtle flex items-center justify-center mx-auto">
-        <Building2 className="size-7 text-brand" />
-      </div>
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="text-center py-16 space-y-8">
+        <div className="size-20 rounded-full bg-primary-subtle flex items-center justify-center mx-auto">
+          <Building2 className="size-9 text-brand" />
+        </div>
 
-      <div className="space-y-2">
-        <h2 className="text-h2 text-heading">You&apos;re not in any club yet</h2>
-        <p className="text-body text-muted max-w-xs mx-auto">
-          Join a club via invite link, check pending invites, or create your own club.
-        </p>
-      </div>
+        <div>
+          <h2 className="text-h1 font-bold text-heading mb-2">Hey {firstName}!</h2>
+          <p className="text-body text-muted max-w-xs mx-auto">
+            You&apos;re not in any club yet. Join one to start tracking your fitness journey.
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-3 max-w-xs mx-auto">
-        <Link
-          href="/portal/invites"
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground font-medium text-body hover:bg-primary/90 transition-colors"
-        >
-          <Search className="size-4" />
-          Check for Invites
-        </Link>
-        <Link
-          href="/onboarding"
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-surface-raised border border-border font-medium text-body text-heading hover:bg-surface-subtle transition-colors"
-        >
-          <Plus className="size-4" />
-          Create a Club
-        </Link>
-        <Link
-          href="/explore"
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-surface-raised border border-border font-medium text-body text-heading hover:bg-surface-subtle transition-colors"
-        >
-          <Compass className="size-4" />
-          Explore Clubs
-        </Link>
+        <div className="flex flex-col gap-3 max-w-xs mx-auto">
+          <Link
+            href="/portal/invites"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-body hover:bg-primary-hover transition-colors"
+          >
+            <Search className="size-4" />
+            Check for Invites
+          </Link>
+          <Link
+            href="/onboarding"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-raised border border-border text-heading font-medium text-body hover:border-brand/40 transition-all"
+          >
+            <Plus className="size-4" />
+            Create a Club
+          </Link>
+          <Link
+            href="/explore"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-raised border border-border text-heading font-medium text-body hover:border-brand/40 transition-all"
+          >
+            <Compass className="size-4" />
+            Explore Clubs
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PortalPage() {
   return (

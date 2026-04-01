@@ -77,7 +77,7 @@ export default async function ReceiptPage({ params }: Props) {
   const methodLabel = payment.method.replace(/_/g, " ");
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-portal mx-auto px-4 py-8 space-y-6">
       {/* Back nav */}
       <Link
         href={`/portal/${clubSlug}`}
@@ -90,7 +90,7 @@ export default async function ReceiptPage({ params }: Props) {
       {/* Receipt card */}
       <div className="bg-surface-raised border border-border rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="bg-success-subtle px-6 py-8 text-center">
+        <div className="bg-success px-6 py-8 text-center">
           <CheckCircle2 className="size-10 text-success-foreground mx-auto mb-3" />
           <p className="text-h2 font-bold text-success-foreground">Payment Recorded</p>
           <p className="text-h1 font-extrabold text-heading mt-1">

@@ -1,7 +1,7 @@
 // /portal/[clubSlug] — member view of one club
 //
-// Server Component: fetches membership data for the current user + this club.
-// Passes to PortalClubClient for tab rendering (Home, Attendance, Payments).
+// Server Component: fetches membership data + all-time attendance for achievements.
+// Passes enriched data to PortalClubClient for tab rendering.
 
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -14,16 +14,30 @@ interface Props {
 }
 
 export async function generateMetadata({ params }: Props) {
-  return { title: "My Club" };
+  return { title: `My Club · ${params.clubSlug}` };
 }
 
 function PageSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="skeleton-shimmer h-20 rounded-xl" />
-      <div className="skeleton-shimmer h-10 rounded-lg" />
-      <div className="skeleton-shimmer h-40 rounded-xl" />
-      <div className="skeleton-shimmer h-40 rounded-xl" />
+    <div className="max-w-5xl mx-auto px-4 lg:px-8 py-8 space-y-4">
+      {/* Hero shimmer */}
+      <div className="portal-shimmer h-6 w-32 rounded-lg" />
+      <div className="portal-shimmer h-8 w-64 rounded-xl" />
+      <div className="portal-shimmer h-4 w-48 rounded" />
+      <div className="flex gap-6 mt-4">
+        <div className="portal-shimmer size-[110px] rounded-full" />
+        <div className="flex-1 grid grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="portal-shimmer h-14 rounded-xl" />
+          ))}
+        </div>
+      </div>
+      <div className="portal-shimmer h-10 w-full rounded-xl mt-4" />
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        <div className="portal-shimmer h-24 rounded-2xl" />
+        <div className="portal-shimmer h-24 rounded-2xl" />
+      </div>
+      <div className="portal-shimmer h-32 rounded-2xl" />
     </div>
   );
 }
@@ -37,7 +51,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
 
   if (!user) notFound();
 
-  // ── Resolve club ────────────────────────────────────────────────────────────
+  // ── Resolve club ─────────────────────────────────────────────────────────────
   const { data: club } = await supabase
     .from("clubs")
     .select("id, name, slug, phone")
@@ -46,7 +60,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
 
   if (!club) notFound();
 
-  // ── Membership for this user in this club ───────────────────────────────────
+  // ── Membership for this user in this club ────────────────────────────────────
   const { data: membership } = await supabase
     .from("club_memberships")
     .select("id, status, joined_at, next_due_date, plan_id")
@@ -59,7 +73,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
 
   if (!membership) notFound();
 
-  // ── Fee plan ────────────────────────────────────────────────────────────────
+  // ── Fee plan ─────────────────────────────────────────────────────────────────
   const { data: feePlan } = membership.plan_id
     ? await supabase
         .from("fee_plans")
@@ -68,7 +82,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
         .single()
     : { data: null };
 
-  // ── Batches this member is in ───────────────────────────────────────────────
+  // ── Batches this member is in ─────────────────────────────────────────────────
   const { data: memberBatchRows } = await supabase
     .from("member_batches")
     .select("id, batch_id")
@@ -84,7 +98,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
         .is("deleted_at", null)
     : { data: [] };
 
-  // ── Attendance this month ───────────────────────────────────────────────────
+  // ── Attendance this month ─────────────────────────────────────────────────────
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
@@ -101,7 +115,7 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
     .lte("date", monthEnd)
     .order("date", { ascending: false });
 
-  // ── Last 90 days attendance (for heatmap) ───────────────────────────────────
+  // ── Last 90 days attendance (for heatmap) ────────────────────────────────────
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
@@ -113,31 +127,61 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
     .gte("date", ninetyDaysAgo)
     .order("date", { ascending: false });
 
-  // ── Payments ────────────────────────────────────────────────────────────────
+  // ── All-time attendance (for achievements) ────────────────────────────────────
+  const { data: allTimeAttendance } = await supabase
+    .from("attendance_records")
+    .select("date, status")
+    .eq("membership_id", membership.id)
+    .order("date", { ascending: true });
+
+  const allRecords = allTimeAttendance ?? [];
+  const totalPresentAllTime = allRecords.filter(
+    (a) => a.status === AttendanceStatus.Present
+  ).length;
+
+  // Max consecutive streak all time
+  let maxStreakAllTime = 0;
+  let currentRun = 0;
+  for (const r of allRecords) {
+    if (r.status === AttendanceStatus.Present) {
+      currentRun++;
+      if (currentRun > maxStreakAllTime) maxStreakAllTime = currentRun;
+    } else {
+      currentRun = 0;
+    }
+  }
+
+  // ── Payments ──────────────────────────────────────────────────────────────────
   const { data: payments } = await supabase
     .from("payments")
     .select("id, amount_paise, method, payment_date, reference, note")
     .eq("membership_id", membership.id)
     .order("payment_date", { ascending: false });
 
-  // ── Attendance stats ────────────────────────────────────────────────────────
+  // ── Attendance stats (this month + current streak) ────────────────────────────
   const presentThisMonth = (attendanceThisMonth ?? []).filter(
     (a) => a.status === AttendanceStatus.Present
   ).length;
   const totalThisMonth = (attendanceThisMonth ?? []).length;
 
-  // Calculate streak (consecutive present days going backward)
-  const sortedAtt = [...(attendanceLast90 ?? [])].sort(
+  const sortedDesc = [...(attendanceLast90 ?? [])].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
   let streak = 0;
-  for (const record of sortedAtt) {
+  for (const record of sortedDesc) {
     if (record.status === AttendanceStatus.Present) {
       streak++;
     } else {
       break;
     }
   }
+
+  // ── User profile (for Profile tab) ───────────────────────────────────────────
+  const { data: userProfile } = await supabase
+    .from("users")
+    .select("full_name, phone")
+    .eq("id", user.id)
+    .single();
 
   return (
     <PortalClubClient
@@ -154,6 +198,12 @@ async function PortalClubData({ clubSlug }: { clubSlug: string }) {
       attendanceLast90={attendanceLast90 ?? []}
       payments={payments ?? []}
       stats={{ presentThisMonth, totalThisMonth, streak }}
+      allTimeStats={{ totalPresent: totalPresentAllTime, maxStreak: maxStreakAllTime }}
+      userProfile={
+        userProfile
+          ? { full_name: userProfile.full_name, phone: userProfile.phone }
+          : null
+      }
     />
   );
 }
