@@ -9,9 +9,6 @@ import {
   CalendarDays,
   ClipboardCheck,
   IndianRupee,
-  BarChart2,
-  MessageSquare,
-  Trophy,
   UserCheck,
   Settings,
   CreditCard,
@@ -38,21 +35,17 @@ const ownerPrimaryNav: NavItem[] = [
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: IndianRupee,     label: "Payments",   href: "payments" },
   { icon: CreditCard,      label: "Plans",      href: "plans"    },
-  { icon: BarChart2,       label: "Reports",    href: "reports" },
 ];
 
 const ownerSecondaryNav: NavItem[] = [
-  { icon: MessageSquare, label: "Communications", href: "communications" },
-  { icon: Trophy,        label: "Progression",    href: "progression" },
-  { icon: UserCheck,     label: "Staff",          href: "staff" },
-  { icon: Settings,      label: "Settings",       href: "settings" },
+  { icon: UserCheck, label: "Staff",    href: "staff" },
+  { icon: Settings,  label: "Settings", href: "settings" },
 ];
 
 const coachPrimaryNav: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: Users,           label: "Members",    href: "members" },
-  { icon: Trophy,          label: "Progression",href: "progression" },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowLeft, CheckCircle2, Plus, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@zenzo/database";
 import { Button, FormField, Input } from "@zenzo/ui";
@@ -42,11 +42,9 @@ function toSlug(name: string): string {
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-// Steps 1–4 are wizard steps (progress dots shown).
-// Step 5 is the completion screen (no active dot).
-type Step = 1 | 2 | 3 | 4 | 5;
-
-type Invitee = { email: string; name: string };
+// Steps 1–3 are wizard steps (progress dots shown).
+// Step 4 is the completion screen (no active dot).
+type Step = 1 | 2 | 3 | 4;
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -80,11 +78,6 @@ export default function OnboardingPage() {
   const [batchDays, setBatchDays]       = useState<string[]>(["mon", "tue", "wed", "thu", "fri"]);
   const [step3Errors, setStep3Errors]   = useState<{ form?: string }>({});
   const [step3Loading, setStep3Loading] = useState(false);
-
-  // Step 4 — invite members (optional)
-  const [invitees, setInvitees]         = useState<Invitee[]>([{ email: "", name: "" }]);
-  const [step4Loading, setStep4Loading] = useState(false);
-  const [step4Error, setStep4Error]     = useState<string | null>(null);
 
   // ── On mount: skip wizard if user already has a club ─────────────────────────
 
@@ -235,63 +228,15 @@ export default function OnboardingPage() {
     setStep(4);
   }
 
-  async function handleStep4Next() {
-    if (!clubId) return;
-
-    const filled = invitees.filter((inv) => inv.email.trim());
-
-    if (filled.length === 0) {
-      // Nothing entered — treat as skip
-      setStep(5);
-      return;
-    }
-
-    setStep4Loading(true);
-    setStep4Error(null);
-
-    try {
-      await fetch("/api/onboarding/invites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ club_id: clubId, invitees: filled }),
-      });
-    } catch {
-      setStep4Error("Invites couldn't be saved. You can add members from your dashboard.");
-    } finally {
-      setStep4Loading(false);
-      setStep(5);
-    }
-  }
-
-  function handleStep4Skip() {
-    setStep(5);
-  }
-
   function handleFinish() {
     router.push(clubSlug ? `/${clubSlug}/dashboard` : "/");
   }
 
-  // ── Invitee helpers ───────────────────────────────────────────────────────────
+  // ── Day toggle ────────────────────────────────────────────────────────────────
 
   function toggleDay(day: string) {
     setBatchDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  }
-
-  function addInvitee() {
-    if (invitees.length < 5) {
-      setInvitees((prev) => [...prev, { email: "", name: "" }]);
-    }
-  }
-
-  function removeInvitee(index: number) {
-    setInvitees((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateInvitee(index: number, field: "email" | "name", value: string) {
-    setInvitees((prev) =>
-      prev.map((inv, i) => (i === index ? { ...inv, [field]: value } : inv))
     );
   }
 
@@ -310,8 +255,8 @@ export default function OnboardingPage() {
 
   // ── Wizard layout ─────────────────────────────────────────────────────────────
 
-  // 4 wizard steps shown with progress dots. Step 5 is the completion screen.
-  const totalSteps = 4;
+  // 3 wizard steps shown with progress dots. Step 4 is the completion screen.
+  const totalSteps = 3;
 
   return (
     <div className="relative min-h-screen bg-surface-subtle flex items-center justify-center p-6 overflow-hidden">
@@ -609,92 +554,8 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 4: Invite first members (skippable) ──────────────────── */}
+          {/* ── Step 4: All set ────────────────────────────────────────────── */}
           {step === 4 && (
-            <div className="px-8 pt-10 pb-8">
-              <div className="mb-6">
-                <h1 className="text-display text-heading">Invite your first members</h1>
-                <p className="mt-1.5 text-body text-muted">
-                  Add their emails. They&apos;ll get an invite to sign up. You can add more from your dashboard anytime.
-                </p>
-              </div>
-
-              {step4Error && (
-                <div
-                  role="alert"
-                  className="mb-5 flex items-start gap-3 rounded-lg bg-error border border-error-accent px-4 py-3 text-body-sm text-error-foreground"
-                >
-                  <AlertCircle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-                  {step4Error}
-                </div>
-              )}
-
-              <div className="space-y-4 mb-5">
-                {invitees.map((inv, i) => (
-                  <div key={i} className="flex gap-2 items-start">
-                    <div className="flex-1 space-y-2">
-                      <Input
-                        type="email"
-                        inputMode="email"
-                        placeholder="member@example.com"
-                        value={inv.email}
-                        onChange={(e) => updateInvitee(i, "email", e.target.value)}
-                        disabled={step4Loading}
-                        autoComplete="off"
-                      />
-                      <Input
-                        type="text"
-                        placeholder="Name (optional)"
-                        value={inv.name}
-                        onChange={(e) => updateInvitee(i, "name", e.target.value)}
-                        disabled={step4Loading}
-                      />
-                    </div>
-                    {invitees.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeInvitee(i)}
-                        disabled={step4Loading}
-                        aria-label="Remove invitee"
-                        className="mt-2.5 p-1 text-muted hover:text-foreground transition-colors duration-standard disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                      >
-                        <X className="size-4" aria-hidden="true" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {invitees.length < 5 && (
-                <button
-                  type="button"
-                  onClick={addInvitee}
-                  disabled={step4Loading}
-                  className="flex items-center gap-1.5 text-body-sm text-brand hover:text-brand/80 transition-colors duration-standard disabled:opacity-50 mb-8 focus-visible:outline-none"
-                >
-                  <Plus className="size-3.5" aria-hidden="true" />
-                  Add another
-                </button>
-              )}
-
-              <div className="space-y-3">
-                <Button fullWidth size="lg" loading={step4Loading} onClick={handleStep4Next}>
-                  Continue
-                </Button>
-                <button
-                  type="button"
-                  onClick={handleStep4Skip}
-                  disabled={step4Loading}
-                  className="block text-body-sm text-muted hover:text-foreground transition-colors duration-standard disabled:opacity-50 mx-auto"
-                >
-                  Skip for now
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 5: All set ────────────────────────────────────────────── */}
-          {step === 5 && (
             <div className="px-8 pt-10 pb-8 text-center space-y-6">
 
               <div
@@ -707,7 +568,7 @@ export default function OnboardingPage() {
               <div className="space-y-2">
                 <h1 className="text-display text-heading">You&apos;re all set</h1>
                 <p className="text-body text-muted">
-                  {studioName || "Your studio"} is ready. Add members and start taking attendance.
+                  {studioName || "Your studio"} is ready. Head to your dashboard to add members and start taking attendance.
                 </p>
               </div>
 

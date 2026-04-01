@@ -111,7 +111,7 @@ export async function PATCH(
     .from("club_memberships")
     .update({ status })
     .eq("id", params.memberId)
-    .eq("club_id", params.clubId);
+    .eq("club_id", clubId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
