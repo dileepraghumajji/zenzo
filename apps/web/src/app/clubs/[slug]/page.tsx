@@ -4,7 +4,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Phone, Users, Clock, MessageCircle } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@zenzo/database/client";
 import { VerificationStatus, ClubCategory, BillingCycle, StaffRole } from "@zenzo/database/enums";
 import { formatCurrency } from "@zenzo/utils";
 import type { DayOfWeek } from "@zenzo/database";
@@ -64,7 +64,7 @@ export default async function PublicClubPage({
 }: {
   params: { slug: string };
 }) {
-  const supabase = createSupabaseServerClient();
+  const supabase = createServiceClient();
 
   // Club
   const { data: club } = await supabase
