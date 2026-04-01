@@ -54,17 +54,18 @@ function parseCsv(text: string): ParsedRow[] {
   if (lines.length === 0) return [];
 
   // Detect if first row is a header
-  const firstLower = lines[0].toLowerCase();
+  const firstLower = (lines[0] ?? "").toLowerCase();
   const hasHeader  = firstLower.includes("name") || firstLower.includes("phone") || firstLower.includes("email");
   const dataLines  = hasHeader ? lines.slice(1) : lines;
 
+  // Column order: phone (required), name (required), email (optional)
   return dataLines.map((line) => {
-    const [rawName = "", rawPhone = "", rawEmail = ""] = line.split(",").map((s) => s.trim().replace(/^"|"$/g, ""));
+    const [rawPhone = "", rawName = "", rawEmail = ""] = line.split(",").map((s) => s.trim().replace(/^"|"$/g, ""));
 
     let error: string | null = null;
-    if (!rawName)                                   error = "Name is required";
-    else if (!/^\d{10}$/.test(rawPhone))            error = "Phone must be 10 digits";
-    else if (rawEmail && !/\S+@\S+\.\S+/.test(rawEmail)) error = "Invalid email";
+    if (!/^\d{10}$/.test(rawPhone))                       error = "Phone must be 10 digits";
+    else if (!rawName)                                     error = "Name is required";
+    else if (rawEmail && !/\S+@\S+\.\S+/.test(rawEmail))  error = "Invalid email";
 
     return { name: rawName, phone: rawPhone, email: rawEmail, error };
   });
@@ -131,9 +132,9 @@ export function CsvInviteForm({ clubSlug, batches, plans }: CsvInviteFormProps) 
 
         if (!res.ok) {
           resultList.push({ row, status: "error", detail: data.error ?? "Unknown error" });
-        } else if (data.status === "not_on_zenzo" || data.status === "invite_sent") {
-          resultList.push({ row, status: "success", detail: "Invite sent" });
-        } else if (data.status === "already_member") {
+        } else if (data.status === "not_on_zenzo") {
+          resultList.push({ row, status: "success", detail: "WhatsApp invite ready" });
+        } else if (data.status === "already_member" || data.error === "already_a_member") {
           resultList.push({ row, status: "exists", detail: "Already a member" });
         } else {
           resultList.push({ row, status: "success", detail: "Added" });
@@ -169,7 +170,7 @@ export function CsvInviteForm({ clubSlug, batches, plans }: CsvInviteFormProps) 
           <textarea
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
-            placeholder={"name,phone,email\nRahul Sharma,9876543210,rahul@example.com\nPriya Singh,9123456789,"}
+            placeholder={"phone,name,email\n9876543210,Rahul Sharma,rahul@example.com\n9123456789,Priya Singh,"}
             rows={8}
             className={cn(
               "w-full rounded-lg border border-border bg-background px-3 py-2.5",

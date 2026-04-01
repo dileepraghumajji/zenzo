@@ -5,8 +5,10 @@
 //
 // Body: { action: "deactivate" | "delete", membershipIds: string[] }
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveClub } from "@/lib/resolve-club";
+import { apiResponse } from "@/lib/api-response";
 import { MembershipStatus, StaffRole } from "@zenzo/database/enums";
 
 export async function POST(
@@ -16,7 +18,7 @@ export async function POST(
   const supabase = createSupabaseServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return apiResponse.unauthorized();
 
   const body = await request.json();
   const { action, membershipIds } = body as {
@@ -25,42 +27,37 @@ export async function POST(
   };
 
   if (!["deactivate", "delete"].includes(action)) {
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    return apiResponse.badRequest("Invalid action.");
   }
   if (!Array.isArray(membershipIds) || membershipIds.length === 0) {
-    return NextResponse.json({ error: "membershipIds must be a non-empty array" }, { status: 400 });
+    return apiResponse.badRequest("membershipIds must be a non-empty array.");
   }
 
   // Resolve club (accepts UUID or slug)
-  const isUuid = /^[0-9a-f-]{36}$/i.test(params.clubId);
-  const { data: club } = await supabase
-    .from("clubs")
-    .select("id")
-    .eq(isUuid ? "id" : "slug", params.clubId)
-    .single();
-
-  if (!club) return NextResponse.json({ error: "Club not found" }, { status: 404 });
+  const resolved = await resolveClub(supabase, params.clubId);
+  if (!resolved) return apiResponse.notFound("Club not found.");
+  const { clubId } = resolved;
 
   // Caller must be owner
   const { data: staff } = await supabase
     .from("club_staff")
     .select("role")
-    .eq("club_id", club.id)
+    .eq("club_id", clubId)
     .eq("user_id", user.id)
     .eq("role", StaffRole.Owner)
     .single();
 
-  if (!staff) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!staff) return apiResponse.forbidden();
 
   if (action === "deactivate") {
     const { error } = await supabase
       .from("club_memberships")
       .update({ status: MembershipStatus.Expired })
       .in("id", membershipIds)
-      .eq("club_id", club.id)
+      .eq("club_id", clubId)
       .is("deleted_at", null);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse.serverError(error.message);
   }
 
   if (action === "delete") {
@@ -68,10 +65,10 @@ export async function POST(
       .from("club_memberships")
       .update({ deleted_at: new Date().toISOString() })
       .in("id", membershipIds)
-      .eq("club_id", club.id);
+      .eq("club_id", clubId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse.serverError(error.message);
   }
 
-  return NextResponse.json({ success: true, count: membershipIds.length });
+  return apiResponse.ok({ success: true, count: membershipIds.length });
 }

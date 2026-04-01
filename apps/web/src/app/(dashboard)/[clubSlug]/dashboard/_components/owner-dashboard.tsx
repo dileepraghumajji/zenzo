@@ -13,7 +13,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { MembershipStatus } from "@zenzo/database/enums";
 import { formatCurrency, formatDate } from "@zenzo/utils";
 import { Avatar, Badge } from "@zenzo/ui";
-import { StatCard, SectionCard, EmptySection } from "./dashboard-ui";
+import { StatCard, SectionCard, EmptySection, KPITimestamp } from "./dashboard-ui";
+import { ActivityFeed } from "./activity-feed";
 
 const DAY_MAP: Record<number, string> = {
   0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat",
@@ -28,14 +29,24 @@ interface Props {
 export async function OwnerDashboard({ clubId, clubSlug, userName }: Props) {
   const supabase = createSupabaseServerClient();
 
-  const today      = new Date().toISOString().slice(0, 10);
-  const todayDay   = DAY_MAP[new Date().getDay()] ?? "mon";
+  const now        = new Date();
+  const today      = now.toISOString().slice(0, 10);
+  const todayDay   = DAY_MAP[now.getDay()] ?? "mon";
   const monthStart = today.slice(0, 7) + "-01";
+
+  // Delta date helpers
+  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  const [yr, mo] = today.slice(0, 7).split("-").map(Number) as [number, number];
+  const prevMo   = mo === 1 ? `${yr - 1}-12` : `${yr}-${String(mo - 1).padStart(2, "0")}`;
+  const lastMonthStart = `${prevMo}-01`;
+  const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0)
+    .toISOString()
+    .slice(0, 10);
 
   // ── 1. Member counts ──────────────────────────────────────────────────────
   const { data: memberships } = await supabase
     .from("club_memberships")
-    .select("id, status, next_due_date, user_id, users(full_name, phone), fee_plans(name, amount_paise)")
+    .select("id, status, next_due_date, joined_at, user_id, users(full_name, phone), fee_plans(name, amount_paise)")
     .eq("club_id", clubId)
     .is("deleted_at", null)
     .in("status", [
@@ -71,6 +82,33 @@ export async function OwnerDashboard({ clubId, clubSlug, userName }: Props) {
     0
   );
   const recentPayments = (monthPayments ?? []).slice(0, 5);
+
+  // ── Delta: new members this week ──────────────────────────────────────────
+  const newMembersThisWeek = allRows.filter(
+    (m) => m.joined_at && m.joined_at >= weekAgo
+  ).length;
+
+  // ── Delta: last month's revenue ───────────────────────────────────────────
+  const { data: lastMonthPayments } =
+    membershipIds.length > 0
+      ? await supabase
+          .from("payments")
+          .select("amount_paise")
+          .in("membership_id", membershipIds)
+          .gte("payment_date", lastMonthStart)
+          .lte("payment_date", lastMonthEnd)
+      : { data: [] };
+
+  const lastMonthRevenuePaise = (lastMonthPayments ?? []).reduce(
+    (sum, p) => sum + p.amount_paise,
+    0
+  );
+  const revenueDeltaPct =
+    lastMonthRevenuePaise > 0
+      ? Math.round(
+          ((monthRevenuePaise - lastMonthRevenuePaise) / lastMonthRevenuePaise) * 100
+        )
+      : null;
 
   // ── 3. Batches + today's attendance ───────────────────────────────────────
   const { data: batches } = await supabase
@@ -120,18 +158,42 @@ export async function OwnerDashboard({ clubId, clubSlug, userName }: Props) {
           Good {getTimeOfDay()}, {firstName} 👋
         </h1>
         <p className="text-[13px] text-muted mt-0.5">
-          {new Date().toLocaleDateString("en-IN", {
-            weekday: "long", day: "numeric", month: "long",
-          })}
+          {overdueRows.length > 0 || (batches ?? []).length > 0 ? (
+            <>
+              {overdueRows.length > 0 && (
+                <span className="text-error-foreground font-medium">
+                  {overdueRows.length} member{overdueRows.length !== 1 ? "s" : ""} overdue
+                </span>
+              )}
+              {overdueRows.length > 0 && (batches ?? []).length > 0 && (
+                <span className="mx-1.5 text-muted/50">·</span>
+              )}
+              {(batches ?? []).length > 0 && (
+                <span>
+                  {(batches ?? []).length} session{(batches ?? []).length !== 1 ? "s" : ""} today
+                </span>
+              )}
+            </>
+          ) : (
+            now.toLocaleDateString("en-IN", {
+              weekday: "long", day: "numeric", month: "long",
+            })
+          )}
         </p>
       </div>
 
       {/* ── KPI row ──────────────────────────────────────────────────────── */}
+      <KPITimestamp />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Active Members"
           value={activeCount}
           accent="success"
+          delta={
+            newMembersThisWeek > 0
+              ? { label: `+${newMembersThisWeek} this week`, direction: "up" }
+              : { label: "No new members this week", direction: "neutral" }
+          }
         />
         <StatCard
           label="Overdue"
@@ -152,6 +214,17 @@ export async function OwnerDashboard({ clubId, clubSlug, userName }: Props) {
           label="Revenue (This Month)"
           value={formatCurrency(monthRevenuePaise)}
           accent="success"
+          delta={
+            revenueDeltaPct !== null
+              ? {
+                  label:
+                    revenueDeltaPct >= 0
+                      ? `▲ ${revenueDeltaPct}% vs last month`
+                      : `▼ ${Math.abs(revenueDeltaPct)}% vs last month`,
+                  direction: revenueDeltaPct >= 0 ? "up" : "down",
+                }
+              : { label: "First month of data", direction: "neutral" }
+          }
         />
         <StatCard
           label="Batches"
@@ -332,6 +405,14 @@ export async function OwnerDashboard({ clubId, clubSlug, userName }: Props) {
             </div>
           )}
         </SectionCard>
+
+        {/* Activity Feed */}
+        <ActivityFeed
+          clubId={clubId}
+          membershipIds={membershipIds}
+          todayBatchIds={todayBatchIds}
+          today={today}
+        />
 
       </div>
     </div>

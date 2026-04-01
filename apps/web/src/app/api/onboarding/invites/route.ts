@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
         .from("club_invites")
         .insert({
           club_id,
+          phone:      null,
           email,
           token,
           plan_id:    null,

@@ -264,7 +264,8 @@ export type Database = {
         Row: {
           id: string;
           club_id: string;
-          email: string;
+          email: string | null;
+          phone: string | null;
           token: string;
           plan_id: string | null;
           batch_id: string | null;

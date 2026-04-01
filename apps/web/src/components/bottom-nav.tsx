@@ -9,9 +9,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   IndianRupee,
-  BarChart2,
-  MessageSquare,
-  Trophy,
+  CreditCard,
   UserCheck,
   Settings,
   MoreHorizontal,
@@ -34,24 +32,21 @@ interface BottomNavItem {
 const ownerPrimaryItems: BottomNavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: Users,           label: "Members",    href: "members" },
-  { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: IndianRupee,     label: "Payments",   href: "payments" },
+  { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
 ];
 
 const ownerMoreItems: BottomNavItem[] = [
-  { icon: BarChart2,     label: "Reports",        href: "reports" },
-  { icon: CalendarDays,  label: "Batches",        href: "batches" },
-  { icon: MessageSquare, label: "Communications", href: "communications" },
-  { icon: Trophy,        label: "Progression",    href: "progression" },
-  { icon: UserCheck,     label: "Staff",          href: "staff" },
-  { icon: Settings,      label: "Settings",       href: "settings" },
+  { icon: CalendarDays, label: "Batches",  href: "batches" },
+  { icon: CreditCard,   label: "Plans",    href: "plans" },
+  { icon: UserCheck,    label: "Staff",    href: "staff" },
+  { icon: Settings,     label: "Settings", href: "settings" },
 ];
 
 const coachPrimaryItems: BottomNavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: ClipboardCheck,  label: "Attendance", href: "attendance" },
   { icon: Users,           label: "Members",    href: "members" },
-  { icon: Trophy,          label: "Progression",href: "progression" },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────

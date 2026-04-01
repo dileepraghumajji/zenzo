@@ -6,8 +6,10 @@
 // Body: { name, city?, phone?, business_type }
 // Returns: { success: true }
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveClub } from "@/lib/resolve-club";
+import { apiResponse } from "@/lib/api-response";
 import { ClubCategory, StaffRole } from "@zenzo/database/enums";
 
 const VALID_CATEGORIES = new Set<string>(Object.values(ClubCategory));
@@ -19,33 +21,33 @@ export async function PATCH(
   const supabase = createSupabaseServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return apiResponse.unauthorized();
 
   const body = await request.json();
   const { name, city, phone, business_type, logo_url, terminology_patch } = body;
 
-  // At least one meaningful field must be present
   if (!name && logo_url === undefined && !terminology_patch) {
-    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+    return apiResponse.badRequest("Nothing to update.");
   }
-
   if (name !== undefined && !name?.trim()) {
-    return NextResponse.json({ error: "Club name is required." }, { status: 400 });
+    return apiResponse.badRequest("Club name is required.");
   }
-
   if (business_type && !VALID_CATEGORIES.has(business_type)) {
-    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
+    return apiResponse.badRequest("Invalid category.");
   }
 
   // Resolve club — param may be UUID or slug
-  const isUuid = /^[0-9a-f-]{36}$/i.test(params.clubId);
+  const resolved = await resolveClub(supabase, params.clubId);
+  if (!resolved) return apiResponse.notFound("Club not found.");
+
+  // Fetch terminology for merge
   const { data: club } = await supabase
     .from("clubs")
     .select("id, terminology")
-    .eq(isUuid ? "id" : "slug", params.clubId)
+    .eq("id", resolved.clubId)
     .single();
 
-  if (!club) return NextResponse.json({ error: "Club not found." }, { status: 404 });
+  if (!club) return apiResponse.notFound("Club not found.");
 
   // Caller must be owner
   const { data: staff } = await supabase
@@ -56,7 +58,7 @@ export async function PATCH(
     .eq("role", StaffRole.Owner)
     .single();
 
-  if (!staff) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!staff) return apiResponse.forbidden();
 
   // Build update payload
   type ClubUpdate = {
@@ -70,13 +72,12 @@ export async function PATCH(
 
   const update: ClubUpdate = {};
 
-  if (name)          update.name          = name.trim();
-  if (city !== undefined)  update.city    = city?.trim() || null;
-  if (phone !== undefined) update.phone   = phone?.trim() || null;
-  if (business_type) update.business_type = business_type;
-  if (logo_url !== undefined) update.logo_url = logo_url;
+  if (name)               update.name          = name.trim();
+  if (city !== undefined) update.city          = city?.trim() || null;
+  if (phone !== undefined) update.phone        = phone?.trim() || null;
+  if (business_type)      update.business_type = business_type;
+  if (logo_url !== undefined) update.logo_url  = logo_url;
 
-  // Merge terminology_patch into existing terminology JSON
   if (terminology_patch && typeof terminology_patch === "object") {
     const existing = (club.terminology ?? {}) as Record<string, unknown>;
     update.terminology = { ...existing, ...terminology_patch };
@@ -87,7 +88,7 @@ export async function PATCH(
     .update(update)
     .eq("id", club.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse.serverError(error.message);
 
-  return NextResponse.json({ success: true });
+  return apiResponse.ok({ success: true });
 }
