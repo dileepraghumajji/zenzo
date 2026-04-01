@@ -3,7 +3,7 @@
 // Paginated: 20 per page via ?page=N
 
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@zenzo/database/client";
 import { ClubCategory, VerificationStatus } from "@zenzo/database/enums";
 
 const PAGE_SIZE = 20;
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const from     = (page - 1) * PAGE_SIZE;
   const to       = from + PAGE_SIZE - 1;
 
-  const supabase = createSupabaseServerClient();
+  const supabase = createServiceClient();
 
   let query = supabase
     .from("clubs")
