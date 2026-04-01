@@ -130,7 +130,7 @@ type InviteRow = {
   batch_id: string | null;
   status: string;
   expires_at: string;
-  email: string;
+  email: string | null;
 };
 
 type AdminClient = ReturnType<typeof createSupabaseAdminClient>;

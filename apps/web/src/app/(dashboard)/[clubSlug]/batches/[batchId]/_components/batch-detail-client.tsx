@@ -5,7 +5,8 @@
 // Responsibilities:
 //   - Batch header: name, timing, days, coach, description
 //   - Stat cards: Members, Today's attendance
-//   - "Take Attendance" CTA
+//   - "Take Attendance" CTA + "Show QR Code" button
+//   - QR modal: fullscreen QR code with live attendance count polling
 //   - Members roster table (desktop) / cards (mobile)
 //   - "Add Member to Batch" — Dialog with searchable member picker
 //   - Remove member from batch
@@ -23,7 +24,11 @@ import {
   MoreVertical,
   Trash2,
   Search,
+  QrCode,
+  X,
+  RefreshCw,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Avatar,
   Badge,
@@ -124,6 +129,7 @@ export function BatchDetailClient({ batch, members: initialMembers, clubSlug }: 
   const router = useRouter();
 
   const [members, setMembers] = React.useState<BatchMemberRow[]>(initialMembers);
+  const [showQr, setShowQr]   = React.useState(false);
 
   // ── Remove member from batch ─────────────────────────────────────────────
   async function handleRemoveMember(memberBatchId: string, name: string) {
@@ -154,6 +160,14 @@ export function BatchDetailClient({ batch, members: initialMembers, clubSlug }: 
             {batch.name}
           </h1>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<QrCode className="size-4" />}
+              onClick={() => setShowQr(true)}
+            >
+              QR Code
+            </Button>
             <Button
               variant="secondary"
               icon={<Pencil className="size-4" />}
@@ -349,6 +363,211 @@ export function BatchDetailClient({ batch, members: initialMembers, clubSlug }: 
             })
           )}
         </div>
+      </div>
+
+      {/* ── QR modal ─────────────────────────────────────────────────────── */}
+      {showQr && (
+        <QrModal
+          batchId={batch.id}
+          batchName={batch.name}
+          memberCount={members.length}
+          clubSlug={clubSlug}
+          onClose={() => setShowQr(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── QrModal ──────────────────────────────────────────────────────────────────
+//
+// Fullscreen overlay that:
+//   1. Fetches a signed QR token from GET /api/batches/[batchId]/qr
+//   2. Renders the QR code via qrcode.react
+//   3. Polls present count every 30 seconds (while open)
+//   4. Shows refresh button when token is expired (next day)
+
+interface QrModalProps {
+  batchId:     string;
+  batchName:   string;
+  memberCount: number;
+  clubSlug:    string;
+  onClose:     () => void;
+}
+
+interface QrData {
+  checkInUrl: string;
+  token:      string;
+  expiresAt:  string;
+}
+
+function QrModal({ batchId, batchName, memberCount, clubSlug, onClose }: QrModalProps) {
+  const [qrData,   setQrData]   = React.useState<QrData | null>(null);
+  const [loading,  setLoading]  = React.useState(true);
+  const [error,    setError]    = React.useState("");
+  const [present,  setPresent]  = React.useState(0);
+  const [expired,  setExpired]  = React.useState(false);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const fetchQr = React.useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setExpired(false);
+    try {
+      const res  = await fetch(`/api/batches/${batchId}/qr?clubSlug=${encodeURIComponent(clubSlug)}`);
+      const data = await res.json() as QrData & { error?: string };
+      if (!res.ok) { setError(data.error ?? "Failed to generate QR code"); return; }
+      setQrData(data);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [batchId, clubSlug]);
+
+  const fetchCount = React.useCallback(async (token: string) => {
+    try {
+      const res  = await fetch(
+        `/api/checkin?batchId=${batchId}&date=${today}&token=${encodeURIComponent(token)}`
+      );
+      if (!res.ok) return;
+      const data = await res.json() as { present: number };
+      setPresent(data.present);
+    } catch {
+      // Silent — count update is non-critical
+    }
+  }, [batchId, today]);
+
+  // Initial load
+  React.useEffect(() => { void fetchQr(); }, [fetchQr]);
+
+  // Poll present count every 30 seconds while open
+  React.useEffect(() => {
+    if (!qrData) return;
+    void fetchCount(qrData.token);
+
+    const id = setInterval(() => {
+      // Check if token has expired (new day)
+      if (Date.now() > new Date(qrData.expiresAt).getTime()) {
+        setExpired(true);
+        clearInterval(id);
+        return;
+      }
+      void fetchCount(qrData.token);
+    }, 30_000);
+
+    return () => clearInterval(id);
+  }, [qrData, fetchCount]);
+
+  // Close on Escape
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background flex flex-col"
+      role="dialog"
+      aria-modal="true"
+      aria-label="QR code attendance"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+        <div>
+          <p className="text-[16px] font-semibold text-foreground">{batchName}</p>
+          <p className="text-[12px] text-muted">
+            {new Date(today + "T00:00:00").toLocaleDateString("en-IN", {
+              weekday: "short", day: "numeric", month: "short",
+            })}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 rounded-lg hover:bg-surface-subtle transition-colors"
+          aria-label="Close QR modal"
+        >
+          <X className="size-5 text-muted" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-8 px-6 py-8">
+        {loading && (
+          <div className="text-[14px] text-muted">Generating QR code…</div>
+        )}
+
+        {error && !loading && (
+          <div className="text-center space-y-3">
+            <p className="text-[14px] text-error-foreground">{error}</p>
+            <Button variant="secondary" onClick={() => void fetchQr()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {!loading && !error && qrData && (
+          <>
+            {/* Live count */}
+            <div className="text-center">
+              <p className="text-[48px] font-bold text-foreground leading-none">
+                {present}
+                <span className="text-[24px] text-muted font-normal">/{memberCount}</span>
+              </p>
+              <p className="text-[13px] text-muted mt-1 uppercase tracking-wider font-medium">
+                Present today
+              </p>
+            </div>
+
+            {/* QR code */}
+            {expired ? (
+              <div className="text-center space-y-4">
+                <div className="size-56 rounded-2xl border border-border bg-surface-subtle flex items-center justify-center">
+                  <div className="text-center space-y-2">
+                    <p className="text-[13px] text-muted">QR code expired</p>
+                    <p className="text-[12px] text-muted">Valid for today only</p>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  icon={<RefreshCw className="size-4" />}
+                  onClick={() => void fetchQr()}
+                >
+                  Refresh QR Code
+                </Button>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-white shadow-lg border border-border">
+                <QRCodeSVG
+                  value={qrData.checkInUrl}
+                  size={220}
+                  level="M"
+                  marginSize={0}
+                />
+              </div>
+            )}
+
+            {/* Instructions */}
+            <div className="text-center max-w-xs space-y-1">
+              <p className="text-[14px] font-medium text-foreground">
+                Members scan to check in
+              </p>
+              <p className="text-[13px] text-muted">
+                No app needed — just a camera. Count updates every 30 seconds.
+              </p>
+            </div>
+
+            {/* Expiry note */}
+            <p className="text-[11px] text-muted">
+              Valid until midnight ·{" "}
+              {new Date(qrData.expiresAt).toLocaleTimeString("en-IN", {
+                hour: "2-digit", minute: "2-digit",
+              })}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

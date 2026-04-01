@@ -390,9 +390,36 @@ Sprint Q (Feature completion + Bug fixes) complete:
 - **Bug fix: Invited user names** — `inviteUserByEmail` fires trigger with no name metadata → `full_name = 'User'`. Fixed: invite form now collects "Member Name" (required), passed to API, forwarded as `data.full_name` to `inviteUserByEmail`.
 - **Phone mandatory for Google OAuth** — `auth/callback/route.ts` checks if OAuth user has empty phone → redirects to `/complete-profile`. New `/complete-profile/page.tsx` collects phone (+ corrects name), updates `users` row via browser Supabase client, then routes via `POST /api/auth/profile`.
 
+### Session 20 — 2026-04-01
+Sprint PH (Phone-First Invite System) complete:
+- **PH.1** — InviteForm field order flipped: Phone (required, first), Name (required), Email (optional).
+- **PH.2 + PH.4** — `not_on_zenzo` result state replaced by WhatsApp CTA. Green "Send invite via WhatsApp" button opens `wa.me/91{phone}?text=...` deep link with invite token in signup URL. Secondary "Email invite also sent" notice shown if email was provided.
+- **PH.3** — `POST /api/members/invite` now phone-first: looks up `users.phone`, falls back to `users.email` if email provided. Builds and returns `whatsappLink` + `emailSent` flag. Email invite via `inviteUserByEmail` is optional (only fires if email given).
+- **PH.5** — CSV invite column order updated to `phone, name, email`. Parser destructuring and placeholder text updated. Result status handles `not_on_zenzo`.
+- **Migration 005** — `club_invites.email` made nullable; `phone` column added with index.
+- **Types** — `ClubInvite.email` updated to `string | null`, `phone: string | null` added.
+- **Downstream fixes** — `activate-invite/route.ts` `InviteRow.email` updated to `string | null`; `onboarding/invites/route.ts` inserts `phone: null` to satisfy updated type.
+
+### Session 21 — 2026-04-01
+Sprint DA (Dashboard Alive) complete:
+- **DA.1** — `StatCard` in `dashboard-ui.tsx` updated with `delta?: { label, direction }` prop. `direction: "up"` = green, `"down"` = red, `"neutral"` = muted. Owner KPI cards wired: Active Members shows "+N joined this week" (queries `joined_at >= 7 days ago`), Revenue shows "▲/▼ X% vs last month" (queries last month's payments for %).
+- **DA.2** — Contextual greeting subtitle updated: shows overdue count (red) + today's session count, using already-fetched data. Falls back to formatted date when both are zero.
+- **DA.3** — New `dashboard/_components/activity-feed.tsx` Server Component: queries last 5 payments + today's absent records, merges and sorts newest-first, renders a timeline with 💳/❌ icons + relative `timeAgo()` helper. Placed as `lg:col-span-2` section card after Recent Payments.
+- **DA.4** — `KPITimestamp` client component added to `dashboard-ui.tsx`: records `Date.now()` on mount, updates every 60s, shows "Last updated · X minutes ago" above KPI grid. `"use client"` added to `dashboard-ui.tsx` (all exports are presentational).
+
+### Session 22 — 2026-04-01
+Sprint QR (QR Code Attendance) complete:
+- **QR.1** — `GET /api/batches/[batchId]/qr`: HMAC-SHA256 signed token (`lib/qr-token.ts`) scoped to today's date. Token = `base64url(payload).HMAC-SHA256(QR_SECRET)`. Returns `{ checkInUrl, token, batchName, expiresAt }`.
+- **QR.2** — Public check-in page at `/checkin?b={batchId}&t={token}` (Server Component validates token + fetches batch name; `CheckInClient` handles phone entry + POST). `/checkin` and `/api/checkin` added to middleware public paths.
+- **QR.3** — "QR Code" button in batch header → fullscreen `QrModal` overlay. Fetches token on open, renders `QRCodeSVG` (qrcode.react v4, `marginSize={0}`). Shows expired state with Refresh button.
+- **QR.4** — `GET /api/checkin?batchId&date&token` returns live present count. QrModal polls every 30s while open via `setInterval`; cancels on token expiry.
+- **QR.5** — Security: HMAC `timingSafeEqual` verification, date-scoped expiry, drop-in detection, duplicate check-in returns `alreadyMarked: true` (server-side unique constraint on `membership_id,batch_id,date`). `marked_by: null` for QR check-ins.
+- Added `qrcode.react ^4.2.0` to `apps/web` dependencies. `QR_SECRET` env var required (falls back to dev default).
+
 ### Up Next
-1. Sprint N — Notifications via Resend (email transactionals)
-2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+1. Sprint OA — Offline Attendance
+2. Sprint N — Notifications via Resend (email transactionals)
+3. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

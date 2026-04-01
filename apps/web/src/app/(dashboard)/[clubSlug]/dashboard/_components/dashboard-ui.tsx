@@ -7,16 +7,25 @@
 //   EmptySection   — empty state inside a SectionCard
 //   DashboardSkeleton — shimmer placeholder for the whole dashboard
 
+"use client";
+
 import * as React from "react";
 import { cn } from "@zenzo/ui";
 import { Skeleton } from "@/components/skeleton";
 
 // ─── StatCard ─────────────────────────────────────────────────────────────────
 
+interface StatCardDelta {
+  label: string;                         // e.g. "+5 this week" or "▲12% vs last month"
+  direction: "up" | "down" | "neutral";  // colours the indicator
+}
+
 interface StatCardProps {
   label: string;
   value: string | number;
   sub?: string;
+  /** Optional delta indicator shown below the value */
+  delta?: StatCardDelta;
   /** Optional coloured accent on the left border */
   accent?: "default" | "error" | "success" | "warning";
   /** Small action link/button rendered below the sub text */
@@ -31,10 +40,17 @@ const ACCENT_CLASS: Record<NonNullable<StatCardProps["accent"]>, string> = {
   warning: "border-l-warning",
 };
 
+const DELTA_CLASS: Record<StatCardDelta["direction"], string> = {
+  up:      "text-success",
+  down:    "text-error-foreground",
+  neutral: "text-muted",
+};
+
 export function StatCard({
   label,
   value,
   sub,
+  delta,
   accent = "default",
   action,
   className,
@@ -55,6 +71,11 @@ export function StatCard({
       </p>
       {sub && (
         <p className="text-[12px] text-muted mt-1 font-mono">{sub}</p>
+      )}
+      {delta && (
+        <p className={cn("text-[11px] font-medium mt-1", DELTA_CLASS[delta.direction])}>
+          {delta.label}
+        </p>
       )}
       {action && (
         <div className="mt-3 pt-2 border-t border-border/50">{action}</div>
@@ -96,6 +117,31 @@ export function SectionCard({
 export function EmptySection({ message }: { message: string }) {
   return (
     <p className="text-[13px] text-muted text-center py-8 px-4">{message}</p>
+  );
+}
+
+// ─── KPITimestamp ─────────────────────────────────────────────────────────────
+// Client component: records mount time and updates every minute.
+
+export function KPITimestamp() {
+  const [mountedAt] = React.useState(() => Date.now());
+  const [, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const diffMin = Math.floor((Date.now() - mountedAt) / 60_000);
+  const label =
+    diffMin < 1  ? "just now" :
+    diffMin === 1 ? "1 minute ago" :
+    `${diffMin} minutes ago`;
+
+  return (
+    <p className="text-[11px] text-muted text-right -mt-5 mb-1">
+      Last updated · {label}
+    </p>
   );
 }
 

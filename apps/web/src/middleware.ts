@@ -30,6 +30,8 @@ const PUBLIC_PATHS = [
   "/onboarding",    // page handles its own auth redirect
   "/auth/",         // Supabase auth callbacks (e.g. /auth/reset-password)
   "/m/",            // member portal (token-gated, not session-gated)
+  "/checkin",       // QR code attendance check-in (token-gated, no session needed)
+  "/api/checkin",   // QR check-in API (public, token-gated)
 ];
 
 function isPublicPath(pathname: string): boolean {

@@ -53,27 +53,27 @@
 ## Sprint PH — Phone-First Invite System
 > **Priority: CRITICAL** — email invites in India = ~16% open rate. This is the #1 conversion bottleneck.
 
-- [ ] **PH.1** — Flip invite form field order and requirements
+- [x] **PH.1** — Flip invite form field order and requirements
   - Phone = required (primary identifier)
   - Name = required
   - Email = optional
   - File: `members/invite/_components/invite-form.tsx`
 
-- [ ] **PH.2** — Generate WhatsApp deep link invite (zero Interakt dependency)
+- [x] **PH.2** — Generate WhatsApp deep link invite (zero Interakt dependency)
   - On invite submit, if user not on Zenzo: show "Invite via WhatsApp" button
   - Link: `wa.me/91{phone}?text=Hi {name}, you've been invited to join {clubName} on Zenzo. Sign up here: {signupUrl}?token={inviteToken}`
   - File: `members/invite/_components/invite-form.tsx` + `POST /api/members/invite`
 
-- [ ] **PH.3** — Update `POST /api/members/invite` for phone-first flow
+- [x] **PH.3** — Update `POST /api/members/invite` for phone-first flow
   - Lookup by phone first (existing logic), email becomes optional secondary
   - When user not found: create invite token, return `{ status: 'not_on_zenzo', whatsappLink, inviteToken }`
   - Email invite as optional fallback only if email is provided
 
-- [ ] **PH.4** — Update invite form UI result state
+- [x] **PH.4** — Update invite form UI result state
   - Replace current "not on Zenzo" error state with actionable CTA
   - Show: "Send invite via WhatsApp" button (opens wa.me link) + optional "Send email invite" secondary action
 
-- [ ] **PH.5** — Update CSV bulk invite to phone-first columns
+- [x] **PH.5** — Update CSV bulk invite to phone-first columns
   - Column order: `phone` (required), `name` (required), `email` (optional)
   - Update parser in `members/invite/csv/_components/csv-invite-form.tsx`
   - Update preview table column order
@@ -83,21 +83,21 @@
 ## Sprint DA — Dashboard Alive
 > **Priority: HIGH** — makes the product feel sticky. Daily return habit = retention.
 
-- [ ] **DA.1** — Add delta indicators to KPI cards
+- [x] **DA.1** — Add delta indicators to KPI cards
   - Owner dashboard stat cards: show "+ N this week" or "▲ 12% vs last month"
   - File: `dashboard/_components/owner-dashboard.tsx` + `dashboard/_components/dashboard-ui.tsx` (update `StatCard`)
 
-- [ ] **DA.2** — Contextual greeting on dashboard
+- [x] **DA.2** — Contextual greeting on dashboard
   - Replace static "Welcome back" with: "Good morning {name}, {N} members are overdue and {N} batches today"
   - Pull counts from existing dashboard queries — no extra DB call
   - File: `dashboard/_components/owner-dashboard.tsx`
 
-- [ ] **DA.3** — Activity feed widget (last 10 events)
+- [x] **DA.3** — Activity feed widget (last 10 events)
   - Show recent events: "Rahul paid ₹5,000 · 2h ago", "Priya marked absent · 9 AM"
   - Sources: `payments` table (recent 5) + `attendance_records` (recent absent, today)
   - File: new `dashboard/_components/activity-feed.tsx`
 
-- [ ] **DA.4** — "Updated X ago" timestamp on KPI section
+- [x] **DA.4** — "Updated X ago" timestamp on KPI section
   - Small text below KPI grid: "Last updated · 2 minutes ago"
   - Client component, uses `Date.now()` on mount
 
@@ -188,28 +188,28 @@
 ## Sprint QR — QR Code Attendance
 > **Priority: MEDIUM** — the "10x" differentiator. No competitor has this.
 
-- [ ] **QR.1** — QR code generation API
+- [x] **QR.1** — QR code generation API
   - `GET /api/batches/[batchId]/qr` — returns signed URL token valid for today only
   - Token: `JWT { batchId, date: today, exp: end-of-day }` signed with `QR_SECRET`
   - Return: `{ checkInUrl: "/checkin?b={batchId}&t={token}" }`
 
-- [ ] **QR.2** — Check-in page (public, no login required)
+- [x] **QR.2** — Check-in page (public, no login required)
   - `/checkin` — member enters phone number
   - Validates token (not expired, batchId matches), looks up membership by phone, marks present
   - Shows: "✓ Attendance marked! Welcome, {name}" or error state
   - File: `app/checkin/page.tsx`
 
-- [ ] **QR.3** — QR display on batch detail page
+- [x] **QR.3** — QR display on batch detail page
   - "Show QR Code" button on `batches/[batchId]` → fullscreen modal with QR
   - QR renders via `qrcode.react` package
   - Auto-refreshes token each day (or shows "expired" with refresh button)
   - File: `batches/[batchId]/_components/batch-detail-client.tsx`
 
-- [ ] **QR.4** — Real-time attendance count update
+- [x] **QR.4** — Real-time attendance count update
   - Attendance count on batch detail page auto-refreshes every 30 seconds while QR modal is open
   - Use `setInterval` + re-fetch (simple polling, no Supabase Realtime needed for v1)
 
-- [ ] **QR.5** — QR security
+- [x] **QR.5** — QR security
   - Token is date-scoped (expires at midnight)
   - Rate limit: max 1 check-in per membership per batch per day (server enforced)
   - Invalid/expired token shows clear error, not a blank page
@@ -272,12 +272,12 @@
 |---|---|---|---|
 | BF | Bug Fixes & Cleanup | 4 | ✅ Complete |
 | RC | Refactor / Code Health | 4 | ✅ Complete |
-| PH | Phone-First Invites | 5 | 🔴 Not Started |
-| DA | Dashboard Alive | 4 | 🔴 Not Started |
+| PH | Phone-First Invites | 5 | ✅ Complete |
+| DA | Dashboard Alive | 4 | ✅ Complete |
 | OA | Offline Attendance | 5 | 🔴 Not Started |
 | RP | Razorpay Payments | 5 | 🔴 Not Started |
 | SR | Smart Reminders | 5 | 🔴 Not Started |
-| QR | QR Attendance | 5 | 🔴 Not Started |
+| QR | QR Attendance | 5 | ✅ Complete |
 | SEC | Security Hardening | 4 | 🔴 Not Started |
 | PERF | Performance | 4 | 🔴 Not Started |
 

@@ -1,15 +1,18 @@
 // POST /api/members/invite
 //
-// Invite a member to a club — S2.2 / Sprint T.
-// Looks up user by email.
+// Invite a member to a club — phone-first flow (Sprint PH).
+// Looks up user by phone (primary). Email is optional secondary identifier.
 //   - If found: creates an active membership immediately.
-//   - If not found: inserts a club_invites row and sends a Supabase invite email
-//     with the token as a query param. Membership is created on signup via activate-invite.
+//   - If not found: inserts a club_invites row, returns a WhatsApp deep link
+//     with the invite token embedded. Optionally sends a Supabase invite email
+//     if email was provided.
 //
-// Body: { clubSlug, email, batchId, planId, startDate }
+// Body: { clubSlug, phone, fullName, batchId, planId, startDate, email? }
 // Returns:
-//   { status: 'added', membershipId, userId }    — membership created immediately
-//   { status: 'invite_sent', inviteId }           — email invite dispatched
+//   { status: 'added', membershipId, userId }
+//     — membership created immediately (user already on Zenzo)
+//   { status: 'not_on_zenzo', whatsappLink, inviteToken, emailSent }
+//     — invite token created; share via WhatsApp
 //
 // Error codes:
 //   400 — missing / invalid fields
@@ -31,6 +34,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 type Body = {
   clubSlug?: string;
+  phone?: string;
   fullName?: string;
   email?: string;
   batchId?: string;
@@ -54,20 +58,28 @@ export async function POST(request: NextRequest) {
   // ── 2. Parse + validate body ────────────────────────────────────────────────
   const body = (await request.json()) as Body;
   const clubSlug  = body.clubSlug?.trim() ?? "";
+  const phone     = body.phone?.trim().replace(/\D/g, "") ?? "";
   const fullName  = body.fullName?.trim() ?? "";
   const email     = body.email?.trim().toLowerCase() ?? "";
   const batchId   = body.batchId?.trim() ?? "";
   const planId    = body.planId?.trim() ?? "";
   const startDate = body.startDate ?? new Date().toISOString().slice(0, 10);
 
-  if (!clubSlug || !email || !batchId || !planId) {
+  if (!clubSlug || !phone || !fullName || !batchId || !planId) {
     return NextResponse.json(
-      { error: "clubSlug, email, batchId, and planId are required" },
+      { error: "clubSlug, phone, fullName, batchId, and planId are required" },
       { status: 400 }
     );
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^\d{10}$/.test(phone)) {
+    return NextResponse.json(
+      { error: "Phone must be a 10-digit Indian mobile number" },
+      { status: 400 }
+    );
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
       { error: "Invalid email address" },
       { status: 400 }
@@ -77,7 +89,7 @@ export async function POST(request: NextRequest) {
   // ── 3. Resolve club + verify caller is staff ────────────────────────────────
   const { data: club, error: clubError } = await supabase
     .from("clubs")
-    .select("id")
+    .select("id, name")
     .eq("slug", clubSlug)
     .single();
 
@@ -96,24 +108,46 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // ── 4. Look up the invitee by email ─────────────────────────────────────────
+  // ── 4. Look up the invitee — phone first, email as fallback ─────────────────
   const admin = createSupabaseAdminClient();
 
-  const { data: invitee } = await admin
+  let invitee: { id: string } | null = null;
+
+  // Primary: phone lookup
+  const { data: byPhone } = await admin
     .from("users")
     .select("id")
-    .eq("email", email)
+    .eq("phone", phone)
     .maybeSingle();
 
-  // ── 5a. Not on Zenzo — create invite token + send email ──────────────────────
+  if (byPhone) {
+    invitee = byPhone;
+  } else if (email) {
+    // Secondary: email lookup
+    const { data: byEmail } = await admin
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (byEmail) invitee = byEmail;
+  }
+
+  // ── 5a. Not on Zenzo — create invite token + WhatsApp link ───────────────────
   if (!invitee) {
     const token = randomUUID();
+    const signupUrl = `${APP_URL}/signup?token=${token}`;
+
+    const waText = encodeURIComponent(
+      `Hi ${fullName}, you've been invited to join ${club.name} on Zenzo. Sign up here: ${signupUrl}`
+    );
+    const whatsappLink = `https://wa.me/91${phone}?text=${waText}`;
 
     const { data: invite, error: inviteError } = await admin
       .from("club_invites")
       .insert({
         club_id:    club.id,
-        email,
+        phone,
+        email:      email || null,
         token,
         plan_id:    planId,
         batch_id:   batchId,
@@ -131,14 +165,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send Supabase auth invite email — redirects to /signup?token=xxx
-    // Pass full_name so handle_new_user trigger populates users.full_name.
-    await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${APP_URL}/signup?token=${token}`,
-      data: { full_name: fullName || email.split("@")[0] },
-    });
+    // Optional: send Supabase invite email if email was provided
+    let emailSent = false;
+    if (email) {
+      await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: signupUrl,
+        data: { full_name: fullName },
+      });
+      emailSent = true;
+    }
 
-    return NextResponse.json({ status: "invite_sent", inviteId: invite.id });
+    return NextResponse.json({
+      status:       "not_on_zenzo",
+      whatsappLink,
+      inviteToken:  token,
+      inviteId:     invite.id,
+      emailSent,
+    });
   }
 
   // ── 5b. Check not already a member ──────────────────────────────────────────

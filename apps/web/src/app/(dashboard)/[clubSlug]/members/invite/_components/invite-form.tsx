@@ -2,13 +2,14 @@
 
 // ─── InviteForm ─────────────────────────────────────────────────────────────────
 //
-// Full Add Member form. Submitted to POST /api/members/invite.
+// Phone-first Add Member form. Submitted to POST /api/members/invite.
 //
 // Flow:
-//   1. Enter phone → API looks up Zenzo account
-//   2. If found → membership created (active), redirect to member profile
-//   3. If not_on_zenzo → show guidance banner (WhatsApp invite deferred to S2.7)
-//   4. If already_a_member → show inline error
+//   1. Enter phone (required) + name (required) + optional email → submit
+//   2. API looks up Zenzo account by phone (then email as fallback)
+//   3. If found → membership created (active), redirect to member profile
+//   4. If not_on_zenzo → show WhatsApp invite CTA + optional email sent notice
+//   5. If already_a_member → show inline error
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -22,7 +23,7 @@ import {
   SelectItem,
 } from "@zenzo/ui";
 import { formatCurrency } from "@zenzo/utils";
-import { Mail, CheckCircle, User } from "lucide-react";
+import { Mail, Phone, User, MessageCircle, CheckCircle } from "lucide-react";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -48,27 +49,31 @@ interface InviteFormProps {
 export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   const router = useRouter();
 
-  const [fullName, setFullName] = React.useState("");
-  const [email,   setEmail]   = React.useState("");
-  const [batchId, setBatchId] = React.useState("");
-  const [planId,  setPlanId]  = React.useState("");
+  const [phone,     setPhone]     = React.useState("");
+  const [fullName,  setFullName]  = React.useState("");
+  const [email,     setEmail]     = React.useState("");
+  const [batchId,   setBatchId]   = React.useState("");
+  const [planId,    setPlanId]    = React.useState("");
   const [startDate, setStartDate] = React.useState(
     new Date().toISOString().slice(0, 10)
   );
 
-  const [errors,   setErrors]   = React.useState<Record<string, string>>({});
-  const [apiState, setApiState] = React.useState<
-    "idle" | "loading" | "invite_sent" | "already_a_member"
+  const [errors,        setErrors]        = React.useState<Record<string, string>>({});
+  const [apiState,      setApiState]      = React.useState<
+    "idle" | "loading" | "not_on_zenzo" | "already_a_member"
   >("idle");
+  const [whatsappLink,  setWhatsappLink]  = React.useState("");
+  const [emailSent,     setEmailSent]     = React.useState(false);
 
   // ── Validation ──────────────────────────────────────────────────────────────
   function validate() {
     const next: Record<string, string> = {};
-    if (!fullName.trim())                                next.fullName = "Member name is required";
-    if (!email.trim())                                   next.email   = "Email address is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email   = "Enter a valid email address";
-    if (!batchId)                                        next.batchId = "Select a batch";
-    if (!planId)                                         next.planId  = "Select a fee plan";
+    if (!/^\d{10}$/.test(phone.trim()))              next.phone    = "Enter a 10-digit mobile number";
+    if (!fullName.trim())                             next.fullName = "Member name is required";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+                                                      next.email    = "Enter a valid email address";
+    if (!batchId)                                     next.batchId  = "Select a batch";
+    if (!planId)                                      next.planId   = "Select a fee plan";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -87,8 +92,9 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clubSlug,
+          phone:    phone.trim(),
           fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
+          email:    email.trim().toLowerCase() || undefined,
           batchId,
           planId,
           startDate,
@@ -99,6 +105,8 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         status?: string;
         error?: string;
         userId?: string;
+        whatsappLink?: string;
+        emailSent?: boolean;
       };
 
       if (res.ok && data.status === "added") {
@@ -106,8 +114,10 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         return;
       }
 
-      if (res.ok && data.status === "invite_sent") {
-        setApiState("invite_sent");
+      if (res.ok && data.status === "not_on_zenzo") {
+        setWhatsappLink(data.whatsappLink ?? "");
+        setEmailSent(data.emailSent ?? false);
+        setApiState("not_on_zenzo");
         return;
       }
 
@@ -116,7 +126,6 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         return;
       }
 
-      // Generic error
       setErrors({ form: data.error ?? "Something went wrong. Please try again." });
       setApiState("idle");
     } catch {
@@ -128,6 +137,30 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+
+      {/* ── Phone ─────────────────────────────────────────────────────────── */}
+      <FormField
+        label="Mobile Number"
+        htmlFor="phone"
+        required
+        error={errors.phone}
+        hint="Primary identifier — used to look up their Zenzo account"
+      >
+        <Input
+          id="phone"
+          type="tel"
+          inputMode="numeric"
+          placeholder="9876543210"
+          value={phone}
+          onChange={(e) => {
+            setPhone(e.target.value);
+            setApiState("idle");
+          }}
+          error={!!errors.phone}
+          prefix={<Phone />}
+          autoComplete="tel"
+        />
+      </FormField>
 
       {/* ── Full Name ─────────────────────────────────────────────────────── */}
       <FormField
@@ -152,13 +185,12 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         />
       </FormField>
 
-      {/* ── Email ─────────────────────────────────────────────────────────── */}
+      {/* ── Email (optional) ──────────────────────────────────────────────── */}
       <FormField
         label="Email Address"
         htmlFor="email"
-        required
         error={errors.email}
-        hint="They'll receive an invite email if they're not on Zenzo yet"
+        hint="Optional — they'll also receive an email invite if not on Zenzo"
       >
         <Input
           id="email"
@@ -176,15 +208,30 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         />
       </FormField>
 
-      {/* ── Invite sent banner ────────────────────────────────────────────── */}
-      {apiState === "invite_sent" && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-border bg-surface-subtle text-[13px] text-muted">
-          <CheckCircle className="size-4 shrink-0 mt-0.5 text-brand" />
-          <p>
-            Invite sent to{" "}
-            <span className="text-foreground font-medium">{email}</span>.
-            Membership will activate once they sign up on Zenzo.
+      {/* ── Not on Zenzo — WhatsApp CTA ───────────────────────────────────── */}
+      {apiState === "not_on_zenzo" && (
+        <div className="rounded-xl border border-border bg-surface-subtle p-4 space-y-3">
+          <p className="text-[13px] text-foreground font-medium">
+            {fullName} isn&apos;t on Zenzo yet.
           </p>
+          <p className="text-[13px] text-muted">
+            Share this invite link via WhatsApp. They&apos;ll be added to {clubSlug} once they sign up.
+          </p>
+          <a
+            href={whatsappLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#25D366] text-white text-[13px] font-semibold hover:bg-[#1ebe5d] transition-colors"
+          >
+            <MessageCircle className="size-4" />
+            Send invite via WhatsApp
+          </a>
+          {emailSent && email && (
+            <div className="flex items-center gap-2 text-[12px] text-muted pt-1">
+              <CheckCircle className="size-3.5 text-brand shrink-0" />
+              Email invite also sent to {email}
+            </div>
+          )}
         </div>
       )}
 
@@ -272,13 +319,28 @@ export function InviteForm({ clubSlug, batches, plans }: InviteFormProps) {
         >
           Cancel
         </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={apiState === "loading"}
-        >
-          {apiState === "loading" ? "Adding…" : "Add Member"}
-        </Button>
+        {apiState === "not_on_zenzo" ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setApiState("idle");
+              setPhone("");
+              setFullName("");
+              setEmail("");
+            }}
+          >
+            Invite Another
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={apiState === "loading"}
+          >
+            {apiState === "loading" ? "Adding…" : "Add Member"}
+          </Button>
+        )}
       </div>
 
     </form>
