@@ -58,13 +58,12 @@ export function TakeAttendanceClient({
   });
 
   // Track initial state to detect unsaved changes
-  const initialStatuses = React.useRef<StatusMap>(() => {
-    const init: StatusMap = {};
-    for (const m of initialMembers) {
-      if (m.existingStatus) init[m.membershipId] = m.existingStatus;
-    }
-    return init;
-  });
+  const initialStatuses = React.useRef<StatusMap>(
+    initialMembers.reduce((acc, m) => {
+      if (m.existingStatus) acc[m.membershipId] = m.existingStatus;
+      return acc;
+    }, {} as StatusMap)
+  );
 
   const hasUnsavedChanges = React.useMemo(() => {
     const keys = new Set([

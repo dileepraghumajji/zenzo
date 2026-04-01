@@ -11,6 +11,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveClub } from "@/lib/resolve-club";
 import { apiResponse } from "@/lib/api-response";
 import { ClubCategory, StaffRole } from "@zenzo/database/enums";
+import type { Json } from "@zenzo/database";
 
 const VALID_CATEGORIES = new Set<string>(Object.values(ClubCategory));
 
@@ -65,9 +66,9 @@ export async function PATCH(
     name?: string;
     city?: string | null;
     phone?: string | null;
-    business_type?: string;
+    business_type?: ClubCategory;
     logo_url?: string | null;
-    terminology?: Record<string, unknown>;
+    terminology?: Json;
   };
 
   const update: ClubUpdate = {};
@@ -75,7 +76,7 @@ export async function PATCH(
   if (name)               update.name          = name.trim();
   if (city !== undefined) update.city          = city?.trim() || null;
   if (phone !== undefined) update.phone        = phone?.trim() || null;
-  if (business_type)      update.business_type = business_type;
+  if (business_type)      update.business_type = business_type as ClubCategory;
   if (logo_url !== undefined) update.logo_url  = logo_url;
 
   if (terminology_patch && typeof terminology_patch === "object") {
