@@ -1,61 +1,44 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { NextRequest, NextResponse } from "next/server";
-import { MembershipStatus } from "@zenzo/database/enums";
+import { resolveClub } from "@/lib/resolve-club";
+import { apiResponse } from "@/lib/api-response";
+import { NextRequest } from "next/server";
+import { MembershipStatus, StaffRole } from "@zenzo/database/enums";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { clubId: string; memberId: string } }
 ) {
   const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return apiResponse.unauthorized();
 
   const body = await request.json();
 
   if (!body || !["deactivate", "reactivate", "update_plan", "update_batch"].includes(body.action)) {
-    return NextResponse.json(
-      {
-        error: "Validation failed - invalid action",
-        code: "VALIDATION_ERROR",
-      },
-      { status: 400 }
-    );
+    return apiResponse.badRequest("Validation failed - invalid action.");
   }
 
-  // ── Resolve club if slug is passed ───────────────────────────────────────
-  let clubId = params.clubId;
-  if (!clubId.includes("-")) { // Check if it's likely a slug (UUIDs have hyphens)
-    const { data: club } = await supabase
-      .from("clubs")
-      .select("id")
-      .eq("slug", params.clubId)
-      .single();
-    if (club) clubId = club.id;
-  }
+  // ── Resolve club ──────────────────────────────────────────────────────────
+  const resolved = await resolveClub(supabase, params.clubId);
+  if (!resolved) return apiResponse.notFound("Club not found.");
+  const { clubId } = resolved;
 
   const { data: staff } = await supabase
     .from("club_staff")
     .select("role")
     .eq("user_id", user.id)
     .eq("club_id", clubId)
-    .eq("role", "owner")
+    .eq("role", StaffRole.Owner)
     .single();
 
-  if (!staff) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!staff) return apiResponse.forbidden();
 
   // ── Handle Update Plan ───────────────────────────────────────────────────
   if (body.action === "update_plan") {
     const { planId } = body;
-    if (!planId) return NextResponse.json({ error: "planId is required" }, { status: 400 });
+    if (!planId) return apiResponse.badRequest("planId is required.");
 
-    // Fetch plan details to set next_due_date if it's missing
     const { data: membership } = await supabase
       .from("club_memberships")
       .select("next_due_date, joined_at")
@@ -65,11 +48,7 @@ export async function PATCH(
     let updateData: { plan_id: string; next_due_date?: string } = { plan_id: planId };
 
     if (membership && !membership.next_due_date) {
-      // Initialize next_due_date to today or joined_at + 1 billing cycle? 
-      // Sprint 5.2 says "calculates next_due_date".
-      // We'll set it to today + 1 cycle or just today for now to mark them as due soon.
-      // Better: joined_at + 1 month (if monthly).
-      updateData.next_due_date = new Date().toISOString().slice(0, 10); 
+      updateData.next_due_date = new Date().toISOString().slice(0, 10);
     }
 
     const { error } = await supabase
@@ -78,28 +57,26 @@ export async function PATCH(
       .eq("id", params.memberId)
       .eq("club_id", clubId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    if (error) return apiResponse.serverError(error.message);
+    return apiResponse.ok({ success: true });
   }
 
   // ── Handle Update Batch ──────────────────────────────────────────────────
   if (body.action === "update_batch") {
     const { batchId } = body;
-    if (!batchId) return NextResponse.json({ error: "batchId is required" }, { status: 400 });
+    if (!batchId) return apiResponse.badRequest("batchId is required.");
 
-    // Remove all existing batch assignments for this membership
     await supabase
       .from("member_batches")
       .delete()
       .eq("membership_id", params.memberId);
 
-    // Insert new batch assignment
     const { error: insertError } = await supabase
       .from("member_batches")
       .insert({ membership_id: params.memberId, batch_id: batchId });
 
-    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    if (insertError) return apiResponse.serverError(insertError.message);
+    return apiResponse.ok({ success: true });
   }
 
   const status =
@@ -113,60 +90,42 @@ export async function PATCH(
     .eq("id", params.memberId)
     .eq("club_id", clubId);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return apiResponse.serverError(error.message);
 
-  return NextResponse.json({ success: true }, { status: 200 });
+  return apiResponse.ok({ success: true });
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { clubId: string; memberId: string } }
 ) {
   const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return apiResponse.unauthorized();
 
-  // ── Resolve club if slug is passed ───────────────────────────────────────
-  let clubId = params.clubId;
-  if (!clubId.includes("-")) {
-    const { data: club } = await supabase
-      .from("clubs")
-      .select("id")
-      .eq("slug", params.clubId)
-      .single();
-    if (club) clubId = club.id;
-  }
+  // ── Resolve club ──────────────────────────────────────────────────────────
+  const resolved = await resolveClub(supabase, params.clubId);
+  if (!resolved) return apiResponse.notFound("Club not found.");
+  const { clubId } = resolved;
 
   const { data: staff } = await supabase
     .from("club_staff")
     .select("role")
     .eq("user_id", user.id)
     .eq("club_id", clubId)
-    .eq("role", "owner")
+    .eq("role", StaffRole.Owner)
     .single();
 
-  if (!staff) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!staff) return apiResponse.forbidden();
 
   const { error } = await supabase
     .from("club_memberships")
-    .update({
-      deleted_at: new Date().toISOString(),
-    })
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", params.memberId)
     .eq("club_id", clubId);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return apiResponse.serverError(error.message);
 
-  return NextResponse.json({ success: true }, { status: 200 });
+  return apiResponse.ok({ success: true });
 }

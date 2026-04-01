@@ -12,8 +12,11 @@
 //   404 — club or user not found
 //   409 — already a staff member
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveClub } from "@/lib/resolve-club";
+import { apiResponse } from "@/lib/api-response";
+import { isValidPhone, normalizePhone } from "@zenzo/utils";
 import { StaffRole } from "@zenzo/database/enums";
 
 export async function POST(
@@ -23,35 +26,30 @@ export async function POST(
   const supabase = createSupabaseServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return apiResponse.unauthorized();
 
   const body = await request.json();
-  const phone = body.phone?.trim().replace(/\D/g, "");
+  const phone = normalizePhone(body.phone ?? "");
 
-  if (!phone || phone.length !== 10) {
-    return NextResponse.json({ error: "Valid 10-digit phone is required." }, { status: 400 });
+  if (!isValidPhone(phone)) {
+    return apiResponse.badRequest("Valid 10-digit phone is required.");
   }
 
   // Resolve club
-  const isUuid = /^[0-9a-f-]{36}$/i.test(params.clubId);
-  const { data: club } = await supabase
-    .from("clubs")
-    .select("id")
-    .eq(isUuid ? "id" : "slug", params.clubId)
-    .single();
-
-  if (!club) return NextResponse.json({ error: "Club not found." }, { status: 404 });
+  const resolved = await resolveClub(supabase, params.clubId);
+  if (!resolved) return apiResponse.notFound("Club not found.");
+  const { clubId } = resolved;
 
   // Caller must be owner
   const { data: callerStaff } = await supabase
     .from("club_staff")
     .select("role")
-    .eq("club_id", club.id)
+    .eq("club_id", clubId)
     .eq("user_id", user.id)
     .eq("role", StaffRole.Owner)
     .single();
 
-  if (!callerStaff) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!callerStaff) return apiResponse.forbidden();
 
   // Look up the target user by phone
   const { data: targetUser } = await supabase
@@ -61,37 +59,31 @@ export async function POST(
     .single();
 
   if (!targetUser) {
-    return NextResponse.json(
-      { error: "No Zenzo account found with that phone number." },
-      { status: 404 }
-    );
+    return apiResponse.notFound("No Zenzo account found with that phone number.");
   }
 
   // Check not already staff
   const { data: existing } = await supabase
     .from("club_staff")
     .select("id")
-    .eq("club_id", club.id)
+    .eq("club_id", clubId)
     .eq("user_id", targetUser.id)
     .single();
 
   if (existing) {
-    return NextResponse.json(
-      { error: "This person is already a staff member." },
-      { status: 409 }
-    );
+    return apiResponse.conflict("This person is already a staff member.");
   }
 
   // Insert coach row
   const { data: newStaff, error } = await supabase
     .from("club_staff")
-    .insert({ club_id: club.id, user_id: targetUser.id, role: StaffRole.Coach })
+    .insert({ club_id: clubId, user_id: targetUser.id, role: StaffRole.Coach })
     .select("id")
     .single();
 
   if (error || !newStaff) {
-    return NextResponse.json({ error: error?.message ?? "Failed to add coach." }, { status: 500 });
+    return apiResponse.serverError(error?.message ?? "Failed to add coach.");
   }
 
-  return NextResponse.json({ staffId: newStaff.id });
+  return apiResponse.ok({ staffId: newStaff.id });
 }

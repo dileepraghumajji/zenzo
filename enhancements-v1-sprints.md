@@ -31,20 +31,20 @@
 ## Sprint RC — Refactor / Code Health
 > **Priority: HIGH** — prevents future bugs before building on messy foundations.
 
-- [ ] **RC.1** — Split `portal-club-client.tsx` (917 lines) into 4 components
+- [x] **RC.1** — Split `portal-club-client.tsx` (917 lines) into 4 components
   - Extract: `<PortalHome>`, `<PortalAttendance>`, `<PortalPayments>`, `<PortalProfile>`
   - Each component should be under 200 lines
   - Tab shell stays in the parent file
 
-- [ ] **RC.2** — Extract `resolveClub(identifier)` utility to `lib/resolve-club.ts`
+- [x] **RC.2** — Extract `resolveClub(identifier)` utility to `lib/resolve-club.ts`
   - UUID-or-slug resolution pattern duplicated in 5+ API routes with identical logic
   - Single function: accepts UUID or slug, returns `{ clubId, club }` or throws
 
-- [ ] **RC.3** — Extract `apiResponse` helper to `lib/api-response.ts`
+- [x] **RC.3** — Extract `apiResponse` helper to `lib/api-response.ts`
   - Currently every route has `NextResponse.json({ error: "..." }, { status: N })` boilerplate
   - Add: `apiResponse.unauthorized()`, `apiResponse.badRequest(msg)`, `apiResponse.notFound()`, `apiResponse.forbidden()`, `apiResponse.ok(data)`
 
-- [ ] **RC.4** — Extract validators to `packages/utils/src/validators.ts`
+- [x] **RC.4** — Extract validators to `packages/utils/src/validators.ts`
   - Phone normalization, slug validation, UUID detection duplicated across 10+ routes
   - Export: `isValidPhone(phone)`, `normalizePhone(phone)`, `isUUID(str)`, `isValidSlug(str)`
 
@@ -271,7 +271,7 @@
 | Sprint | Focus | Tasks | Status |
 |---|---|---|---|
 | BF | Bug Fixes & Cleanup | 4 | ✅ Complete |
-| RC | Refactor / Code Health | 4 | 🔴 Not Started |
+| RC | Refactor / Code Health | 4 | ✅ Complete |
 | PH | Phone-First Invites | 5 | 🔴 Not Started |
 | DA | Dashboard Alive | 4 | 🔴 Not Started |
 | OA | Offline Attendance | 5 | 🔴 Not Started |
