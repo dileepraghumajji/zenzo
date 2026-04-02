@@ -416,10 +416,32 @@ Sprint QR (QR Code Attendance) complete:
 - **QR.5** — Security: HMAC `timingSafeEqual` verification, date-scoped expiry, drop-in detection, duplicate check-in returns `alreadyMarked: true` (server-side unique constraint on `membership_id,batch_id,date`). `marked_by: null` for QR check-ins.
 - Added `qrcode.react ^4.2.0` to `apps/web` dependencies. `QR_SECRET` env var required (falls back to dev default).
 
+### Session 23 — 2026-04-01
+Sprint MK (Marketing Page Enhancements) complete:
+- **MK.1 NavBar** — Extracted nav into `_components/marketing/navbar.tsx` client component. Added hamburger menu for `< md` breakpoints: hides "Explore clubs" + "Sign in" behind it, keeps primary CTA visible.
+- **MK.2 Hero headline** — Rewrote headline to "Run your gym from the mat, not a spreadsheet." (embeds the what). Added problem-first opener pill: "You didn't open a gym to chase payments on WhatsApp." Added secondary CTA "See how it works →" linking to `#how-it-works`.
+- **MK.3 Subheadline** — Rewritten to "Zenzo manages attendance, billing, and member communication for martial arts academies, gyms, and studios."
+- **MK.4 Pricing signal** — Added "Free for clubs under 30 members. Plans from ₹999/mo." below CTA.
+- **MK.5 Hero mockup** — Expanded to 5 present + 1 absent members, richer batch label "6 AM Kickboxing — Andheri West", completion time "Completed in 38s". Added bottom-fade to suggest more members. Fixed `dangerouslySetInnerHTML` → Tailwind `[perspective:1000px]`.
+- **MK.6 Social proof bar** — Added between hero and features: active clubs count, monthly attendance marks, "Built in India, for India" with ₹ native + WhatsApp-first signals.
+- **MK.7 Sticky scroll visuals** — Replaced placeholder grey rectangles with real member rows (initials, name, present/absent state). Replaced base64 dot pattern with CSS `radial-gradient`.
+- **MK.8 How It Works section** — New 3-step section with anchor `#how-it-works`: "Create your club → Invite via WhatsApp → Mark attendance tomorrow."
+- **MK.9 Bento section** — Heading rewritten to "The boring stuff, done perfectly." Added "Built for martial arts academies · CrossFit boxes · yoga studios · dance schools" tagline. Fixed "Zero Shadow Accounts" copy → "One Real Profile Per Member". Fixed "Batches that Breathe" to include concrete outcome (auto-generates daily roll calls).
+- **MK.10 Footer** — CTA rewritten: headline "Be ready." with opener "Your next batch starts tomorrow." Copy updated to "Attendance in 30 seconds. Payments on autopilot." CTA button renamed "Start for free". Pricing signal repeated in footer.
+
+### Session 24 — 2026-04-02
+Sprint MK2 (Marketing Page — Pending Enhancements) complete:
+- **I1** — `GET /api/marketing/stats` (service client, 5-min revalidate): counts `attendance_records` last 7 days + total clubs. Social proof bar in `page.tsx` now server-fetches real live numbers with a pulsing "live" badge. `formatCount()` helper formats 0→"—", 1000→"1.0k+".
+- **I5** — Category selector in hero: 4 pill buttons (🏋️ Gym · 🥋 Martial Arts · 💃 Dance · 🧘 Yoga). Selecting a category animates the subheadline `<span>` (Framer AnimatePresence), the batch label, member names, absent member, and completion time in the 3D mockup. Default: Martial Arts.
+- **I3** — Interactive demo section (`interactive-demo.tsx`): full tappable attendance screen with 6 members, live elapsed timer starts on first tap, progress bar, success state with elapsed seconds, "Try again" reset. Placed between bento grid and footer.
+- **T1** — `DarkFooter` is now a pure Server Component (removed `"use client"` + framer-motion). Entrance animation replaced with CSS `@keyframes footerFadeUp` scoped inside a `<style>` tag.
+- **T3** — `FeatureSections` wrapped with `next/dynamic` in `page.tsx` for JS code-splitting (SSR preserved).
+
 ### Up Next
-1. Sprint OA — Offline Attendance
-2. Sprint N — Notifications via Resend (email transactionals)
-3. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+1. D5 — Real photography of gyms/coaches (needs assets from user)
+2. Sprint OA — Offline Attendance
+3. Sprint N — Notifications via Resend (email transactionals)
+4. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)
