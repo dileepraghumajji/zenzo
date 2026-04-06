@@ -1,18 +1,46 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 
-const CLUB_CATEGORIES = [
+export type ClubCategory = {
+  label: string;
+  emoji: string;
+  batchLabel: string;
+  completedIn: string;
+  subtext: string;
+  batchName: string;
+  batchEmoji: string;
+  days: string[];
+  time: string;
+  coachInitials: string;
+  coachName: string;
+  coachTitle: string;
+  attendancePresent: number;
+  attendanceTotal: number;
+  members: { initials: string; name: string }[];
+  absentMember: { initials: string; name: string };
+};
+
+export const CLUB_CATEGORIES: ClubCategory[] = [
   {
     label: "Gym",
     emoji: "🏋️",
     batchLabel: "Morning Strength — Powai, Mumbai",
     completedIn: "42s",
     subtext: "gyms and fitness centres",
+    batchName: "Morning Strength",
+    batchEmoji: "🏋️",
+    days: ["Mon", "Tue", "Thu"],
+    time: "06:00 – 07:30",
+    coachInitials: "VS",
+    coachName: "Vikram Singh",
+    coachTitle: "Strength Coach · 2 batches",
+    attendancePresent: 18,
+    attendanceTotal: 20,
     members: [
       { initials: "RS", name: "Rahul Sharma" },
       { initials: "VK", name: "Vikram Kapoor" },
@@ -28,6 +56,15 @@ const CLUB_CATEGORIES = [
     batchLabel: "6 AM Kickboxing — Andheri West",
     completedIn: "38s",
     subtext: "martial arts academies",
+    batchName: "6 AM Kickboxing",
+    batchEmoji: "🥋",
+    days: ["Mon", "Wed", "Fri"],
+    time: "06:00 – 07:30",
+    coachInitials: "AM",
+    coachName: "Arjun Mehta",
+    coachTitle: "Head Coach · 3 batches",
+    attendancePresent: 23,
+    attendanceTotal: 25,
     members: [
       { initials: "RS", name: "Rahul Sharma" },
       { initials: "DG", name: "Deepa Gupta" },
@@ -43,6 +80,15 @@ const CLUB_CATEGORIES = [
     batchLabel: "Evening Batch — Koramangala, Bangalore",
     completedIn: "51s",
     subtext: "dance academies",
+    batchName: "Evening Contemporary",
+    batchEmoji: "💃",
+    days: ["Tue", "Thu", "Sat"],
+    time: "17:00 – 18:30",
+    coachInitials: "KR",
+    coachName: "Kavya Reddy",
+    coachTitle: "Lead Instructor · 2 batches",
+    attendancePresent: 14,
+    attendanceTotal: 16,
     members: [
       { initials: "AN", name: "Anjali Nair" },
       { initials: "KR", name: "Kavya Reddy" },
@@ -58,6 +104,15 @@ const CLUB_CATEGORIES = [
     batchLabel: "Sunrise Session — Baner, Pune",
     completedIn: "35s",
     subtext: "yoga studios",
+    batchName: "Sunrise Hatha",
+    batchEmoji: "🧘",
+    days: ["Mon", "Wed", "Fri", "Sun"],
+    time: "06:30 – 07:30",
+    coachInitials: "MP",
+    coachName: "Meera Pillai",
+    coachTitle: "Yoga Instructor · 4 batches",
+    attendancePresent: 11,
+    attendanceTotal: 12,
     members: [
       { initials: "MP", name: "Meera Pillai" },
       { initials: "AS", name: "Ananya Singh" },
@@ -67,11 +122,16 @@ const CLUB_CATEGORIES = [
     ],
     absentMember: { initials: "TG", name: "Tanvi Gupta" },
   },
-] as const;
+];
 
-export function LandingHero() {
-  const [activeCategoryIdx, setActiveCategoryIdx] = useState(1);
+interface LandingHeroProps {
+  activeCategoryIdx: number;
+  onCategoryChange: (i: number) => void;
+}
+
+export function LandingHero({ activeCategoryIdx, onCategoryChange }: LandingHeroProps) {
   const category = CLUB_CATEGORIES[activeCategoryIdx] ?? CLUB_CATEGORIES[1];
+  if (!category) return null;
 
   const ref = useRef<HTMLDivElement>(null);
   const x = useMotionValue(0);
@@ -111,7 +171,7 @@ export function LandingHero() {
             You didn&apos;t open a gym to chase payments on WhatsApp.
           </motion.div>
 
-          {/* Headline — scales from 4xl on tiny phones up to 8xl on large screens */}
+          {/* Headline */}
           <motion.h1
             initial={{ opacity: 0, scale: 0.95, y: 30 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -157,7 +217,7 @@ export function LandingHero() {
             {CLUB_CATEGORIES.map((cat, i) => (
               <button
                 key={cat.label}
-                onClick={() => setActiveCategoryIdx(i)}
+                onClick={() => onCategoryChange(i)}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all ${
                   activeCategoryIdx === i
                     ? "border-[var(--action-primary-bg)] bg-[var(--action-primary-bg)] text-white shadow-md"
@@ -261,7 +321,7 @@ export function LandingHero() {
               </div>
             </div>
 
-            {/* Body: QR code left, live scan feed right */}
+            {/* Body: QR left, live scan feed right */}
             <div
               className="grid grid-cols-1 sm:grid-cols-[200px_1fr] md:grid-cols-[240px_1fr]"
               style={{ transform: "translateZ(30px)" }}
