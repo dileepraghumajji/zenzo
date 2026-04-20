@@ -66,3 +66,10 @@ export const AttendanceStatus = {
   Unmarked: "unmarked",
 } as const;
 export type AttendanceStatus = (typeof AttendanceStatus)[keyof typeof AttendanceStatus];
+
+export const InviteStatus = {
+  Pending:  "pending",
+  Accepted: "accepted",
+  Expired:  "expired",
+} as const;
+export type InviteStatus = (typeof InviteStatus)[keyof typeof InviteStatus];

@@ -33,7 +33,7 @@ export default async function ClubLayout({
 
   // Fetches profile from clubs + club_staff tables.
   // If session invalid or user not in this club → redirects to /login.
-  const { role, fullName, initials } = await getUserProfile(clubSlug);
+  const { role, fullName, initials, allClubs } = await getUserProfile(clubSlug);
 
   // Only owner and coach can access the club dashboard.
   if (role !== StaffRole.Owner && role !== StaffRole.Coach) {
@@ -48,6 +48,7 @@ export default async function ClubLayout({
         role={role}
         userName={fullName}
         userInitials={initials}
+        allClubs={allClubs}
       />
 
       {/* Main content — flex-1 fills space left by sidebar */}
@@ -56,7 +57,7 @@ export default async function ClubLayout({
       </main>
 
       {/* Mobile/tablet bottom nav — same role, same fetch */}
-      <BottomNav clubSlug={clubSlug} role={role} />
+      <BottomNav clubSlug={clubSlug} role={role} allClubs={allClubs} />
     </div>
   );
 }

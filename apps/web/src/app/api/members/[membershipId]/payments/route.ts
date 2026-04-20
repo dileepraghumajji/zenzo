@@ -1,6 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { BillingCycle, MembershipStatus } from "@zenzo/database/enums";
+import { sendEmail, isNotifEnabled } from "@/lib/email";
+import { receiptEmailHtml } from "@/lib/email-templates/receipt";
+import { calculateNextDueDate } from "@zenzo/utils";
+import { APP_URL } from "@/lib/constants";
 
 export async function POST(
   request: NextRequest,
@@ -56,22 +60,9 @@ export async function POST(
   }
 
   // 3. Calculate next due date
-  let nextDueDate = membership.next_due_date || payment_date;
-  const cycle = membership.fee_plans?.billing_cycle as BillingCycle;
-
-  if (cycle) {
-    const d = new Date(nextDueDate);
-    if (cycle === BillingCycle.Monthly)    d.setMonth(d.getMonth() + 1);
-    else if (cycle === BillingCycle.Quarterly)  d.setMonth(d.getMonth() + 3);
-    else if (cycle === BillingCycle.HalfYearly) d.setMonth(d.getMonth() + 6);
-    else if (cycle === BillingCycle.Annual)     d.setFullYear(d.getFullYear() + 1);
-    // per_session doesn't advance by date in a simple way, maybe just set to null or same?
-    // For now, we'll only advance for period-based cycles.
-    
-    if (cycle !== BillingCycle.PerSession) {
-      nextDueDate = d.toISOString().slice(0, 10);
-    }
-  }
+  const fromDate = membership.next_due_date || payment_date;
+  const cycle = membership.fee_plans?.billing_cycle as BillingCycle | undefined;
+  const nextDueDate = cycle ? (calculateNextDueDate(fromDate, cycle) ?? fromDate) : fromDate;
 
   // 4. Insert payment
   const { data: payment, error: pError } = await supabase
@@ -85,7 +76,7 @@ export async function POST(
       reference:   null,
       recorded_by: user.id,
     })
-    .select()
+    .select("id, membership_id, amount_paise, method, payment_date, reference, note, recorded_by, created_at")
     .single();
 
   if (pError) {
@@ -105,5 +96,80 @@ export async function POST(
     return NextResponse.json({ error: uError.message }, { status: 500 });
   }
 
+  // Send receipt email — fire-and-forget
+  void sendReceiptEmail({
+    supabase,
+    membershipId: params.membershipId,
+    clubId: club.id,
+    paymentId: payment.id,
+    amountPaise: amount_paise as number,
+    paymentDate: payment_date as string,
+    method: method as string,
+    note: (note as string | null) ?? null,
+  });
+
   return NextResponse.json({ success: true, payment });
+}
+
+async function sendReceiptEmail({
+  supabase,
+  membershipId,
+  clubId,
+  paymentId,
+  amountPaise,
+  paymentDate,
+  method,
+  note,
+}: {
+  supabase: ReturnType<typeof createSupabaseServerClient>;
+  membershipId: string;
+  clubId: string;
+  paymentId: string;
+  amountPaise: number;
+  paymentDate: string;
+  method: string;
+  note: string | null;
+}): Promise<void> {
+  const [membershipResult, clubResult] = await Promise.all([
+    supabase
+      .from("club_memberships")
+      .select("user_id, plan_id, fee_plans(name), users(email, full_name)")
+      .eq("id", membershipId)
+      .single(),
+    supabase
+      .from("clubs")
+      .select("name, slug, terminology")
+      .eq("id", clubId)
+      .single(),
+  ]);
+
+  const mem  = membershipResult.data;
+  const club = clubResult.data;
+  if (!mem || !club) return;
+
+  const userRow = mem.users as { email: string; full_name: string } | null;
+  const planRow = mem.fee_plans as { name: string } | null;
+  if (!userRow) return;
+
+  if (!isNotifEnabled(club.terminology as Record<string, unknown> | null, "notif_payment_receipt")) return;
+
+  const receiptUrl = club.slug
+    ? `${APP_URL}/portal/${club.slug}/payments/${paymentId}`
+    : `${APP_URL}/portal`;
+
+  await sendEmail({
+    to: userRow.email,
+    subject: `Payment receipt — ${club.name}`,
+    html: receiptEmailHtml({
+      memberName:  userRow.full_name,
+      clubName:    club.name,
+      amountPaise,
+      paymentDate,
+      method,
+      planName:    planRow?.name ?? null,
+      reference:   null,
+      note,
+      receiptUrl,
+    }),
+  });
 }

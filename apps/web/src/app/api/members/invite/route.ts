@@ -28,9 +28,11 @@ import {
   createSupabaseServerClient,
   createSupabaseAdminClient,
 } from "@/lib/supabase/server";
-import { MembershipStatus } from "@zenzo/database/enums";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { BillingCycle, InviteStatus, MembershipStatus } from "@zenzo/database/enums";
+import { sendEmail } from "@/lib/email";
+import { inviteEmailHtml } from "@/lib/email-templates/invite";
+import { calculateNextDueDate } from "@zenzo/utils";
+import { APP_URL } from "@/lib/constants";
 
 type Body = {
   clubSlug?: string;
@@ -152,7 +154,7 @@ export async function POST(request: NextRequest) {
         plan_id:    planId,
         batch_id:   batchId,
         invited_by: user.id,
-        status:     "pending",
+        status:     InviteStatus.Pending,
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       })
       .select("id")
@@ -165,12 +167,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Optional: send Supabase invite email if email was provided
+    // Send invite email via Resend if email was provided
     let emailSent = false;
     if (email) {
-      await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: signupUrl,
-        data: { full_name: fullName },
+      const [{ data: inviterRow }, { data: invitePlanRow }] = await Promise.all([
+        admin.from("users").select("full_name").eq("id", user.id).single(),
+        planId
+          ? admin.from("fee_plans").select("name").eq("id", planId).single()
+          : Promise.resolve({ data: null }),
+      ]);
+
+      await sendEmail({
+        to: email,
+        subject: `You've been invited to join ${club.name} on Zenzo`,
+        html: inviteEmailHtml({
+          memberName:  fullName,
+          clubName:    club.name,
+          inviterName: inviterRow?.full_name ?? "Your coach",
+          planName:    invitePlanRow?.name ?? null,
+          signupUrl,
+        }),
       });
       emailSent = true;
     }
@@ -201,6 +217,17 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 6. Create membership immediately ─────────────────────────────────────────
+  // Fetch plan billing_cycle to set next_due_date on creation
+  const { data: planRow } = await admin
+    .from("fee_plans")
+    .select("billing_cycle")
+    .eq("id", planId)
+    .single();
+
+  const nextDueDate = planRow?.billing_cycle
+    ? calculateNextDueDate(startDate, planRow.billing_cycle as BillingCycle)
+    : null;
+
   const { data: membership, error: membershipError } = await admin
     .from("club_memberships")
     .insert({
@@ -209,7 +236,7 @@ export async function POST(request: NextRequest) {
       plan_id:       planId,
       status:        MembershipStatus.Active,
       joined_at:     startDate,
-      next_due_date: null,
+      next_due_date: nextDueDate,
       deleted_at:    null,
     })
     .select("id")

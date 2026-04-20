@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — Zenzo</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center;
+           justify-content: center; min-height: 100vh; margin: 0; background: #fafaf9; }
+    .card { text-align: center; padding: 2rem; max-width: 320px; }
+    h1 { font-size: 1.25rem; font-weight: 700; color: #1c1917; margin-bottom: .5rem; }
+    p  { font-size: .875rem; color: #78716c; line-height: 1.5; }
+    .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+    button { margin-top: 1.5rem; padding: .625rem 1.5rem; background: #C84A08;
+             color: white; border: none; border-radius: .5rem; font-size: .875rem;
+             font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📶</div>
+    <h1>You're offline</h1>
+    <p>Attendance is still saved to your device. It will sync automatically when you reconnect.</p>
+    <button onclick="window.location.reload()">Try again</button>
+  </div>
+</body>
+</html>

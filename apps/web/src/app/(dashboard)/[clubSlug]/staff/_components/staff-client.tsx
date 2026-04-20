@@ -221,7 +221,7 @@ function AddCoachDialog({
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <p className="text-[13px] text-muted">
             The person must already have a Zenzo account. Enter their registered
-            phone number.
+            phone number. Coaches can be shared across multiple clubs.
           </p>
           <FormField label="Phone Number" required>
             <Input

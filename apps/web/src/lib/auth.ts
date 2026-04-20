@@ -19,12 +19,19 @@ import type { StaffRole } from "@zenzo/database/enums";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface ClubStub {
+  slug: string;
+  name: string;
+  role: StaffRole;
+}
+
 export interface UserProfile {
   userId: string;
   role: StaffRole;
   fullName: string;
   initials: string;
   clubId: string;
+  allClubs: ClubStub[];
 }
 
 // ─── getUserProfile ───────────────────────────────────────────────────────────
@@ -81,11 +88,36 @@ export async function getUserProfile(clubSlug: string): Promise<UserProfile> {
   const initials =
     ((first[0] ?? "") + (last !== first ? (last[0] ?? "") : "")).toUpperCase() || "?";
 
+  // Fetch all clubs this user belongs to for the club switcher.
+  const { data: allStaff } = await supabase
+    .from("club_staff")
+    .select("role, club_id")
+    .eq("user_id", user.id);
+
+  let allClubs: ClubStub[] = [];
+  if (allStaff && allStaff.length > 0) {
+    const clubIds = allStaff.map((s) => s.club_id);
+    const { data: clubRows } = await supabase
+      .from("clubs")
+      .select("id, slug, name")
+      .in("id", clubIds)
+      .order("name");
+
+    if (clubRows) {
+      allClubs = clubRows.map((c) => ({
+        slug: c.slug,
+        name: c.name,
+        role: (allStaff.find((s) => s.club_id === c.id)?.role ?? "coach") as StaffRole,
+      }));
+    }
+  }
+
   return {
     userId:   user.id,
     role:     staff.role,
     fullName: userRow.full_name ?? "User",
     initials,
     clubId:   club.id,
+    allClubs,
   };
 }
