@@ -46,7 +46,7 @@ BEGIN
     coalesce(nullif(trim(new.raw_user_meta_data->>'phone'), ''), ''),
     coalesce(new.email, ''),
     CASE
-      WHEN new.app_metadata->>'provider' = 'google' THEN 'google'
+      WHEN new.raw_app_meta_data->>'provider' = 'google' THEN 'google'
       ELSE coalesce(new.raw_user_meta_data->>'auth_provider', 'email')
     END
   );

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { Zap, CalendarDays, MessageSquare, CreditCard, Clock, Lock, AlertTriangle, MessageCircle } from "lucide-react";
+import { CLUB_CATEGORIES } from "./landing-hero";
 
 const STORY_STEPS = [
   {
@@ -25,7 +26,11 @@ const OVERDUE_PREVIEW = [
   { initials: "AK", name: "Arjun Kumar",   amount: "₹4,800", days: "21d" },
 ];
 
-export function FeatureSections() {
+export function FeatureSections({ activeCategoryIdx }: { activeCategoryIdx: number }) {
+  const category = CLUB_CATEGORIES[activeCategoryIdx] ?? CLUB_CATEGORIES[1];
+  if (!category) return null;
+  const attendancePct = Math.round((category.attendancePresent / category.attendanceTotal) * 100);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -112,82 +117,95 @@ export function FeatureSections() {
                   }}
                 />
 
-                {/* ── Visual 0: Batch card ─────────────────── */}
+                {/* ── Visual 0: Batch card — dynamic per category ── */}
                 <motion.div
                   style={{ opacity: visual0Opacity }}
                   className="absolute inset-0 flex items-center justify-center p-10 lg:p-12"
                 >
-                  <div className="w-full max-w-sm rounded-2xl bg-[var(--surface-page)] border border-[var(--border-default)] shadow-xl overflow-hidden">
-
-                    {/* Batch header */}
-                    <div className="px-6 py-5 border-b border-[var(--border-default)]">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--action-primary-bg)] mb-1">
-                            Active Batch
-                          </p>
-                          <h3 className="text-xl font-bold text-[var(--text-primary)] leading-tight">
-                            6 AM Kickboxing
-                          </h3>
-                          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                            {["Mon", "Wed", "Fri"].map((d) => (
-                              <span
-                                key={d}
-                                className="rounded-full bg-[var(--surface-subtle)] border border-[var(--border-default)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]"
-                              >
-                                {d}
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={`batch-${activeCategoryIdx}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                      className="w-full max-w-sm rounded-2xl bg-[var(--surface-page)] border border-[var(--border-default)] shadow-xl overflow-hidden"
+                    >
+                      {/* Batch header */}
+                      <div className="px-6 py-5 border-b border-[var(--border-default)]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--action-primary-bg)] mb-1">
+                              Active Batch
+                            </p>
+                            <h3 className="text-xl font-bold text-[var(--text-primary)] leading-tight truncate">
+                              {category.batchName}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                              {category.days.map((d) => (
+                                <span
+                                  key={d}
+                                  className="rounded-full bg-[var(--surface-subtle)] border border-[var(--border-default)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]"
+                                >
+                                  {d}
+                                </span>
+                              ))}
+                              <span className="text-xs text-[var(--text-tertiary)] ml-0.5">
+                                {category.time}
                               </span>
-                            ))}
-                            <span className="text-xs text-[var(--text-tertiary)] ml-0.5">
-                              06:00 – 07:30
-                            </span>
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-default)] flex items-center justify-center text-xl shadow-inner">
+                            {category.batchEmoji}
                           </div>
                         </div>
-                        <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-default)] flex items-center justify-center text-xl shadow-inner">
-                          🥋
-                        </div>
                       </div>
-                    </div>
 
-                    {/* Coach row */}
-                    <div className="px-6 py-4 border-b border-[var(--border-default)]">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)] mb-3">
-                        Coach
-                      </p>
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 flex-shrink-0 rounded-full bg-[var(--action-primary-bg)] text-white flex items-center justify-center text-xs font-bold shadow-md">
-                          AM
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[var(--text-primary)]">Arjun Mehta</p>
-                          <p className="text-xs text-[var(--text-tertiary)]">Head Coach · 3 batches</p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full bg-[var(--status-success-text)]" />
-                          <span className="text-xs font-semibold text-[var(--status-success-text)]">Active</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Attendance progress */}
-                    <div className="px-6 py-4">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                          Today&apos;s Attendance
+                      {/* Coach row */}
+                      <div className="px-6 py-4 border-b border-[var(--border-default)]">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)] mb-3">
+                          Coach
                         </p>
-                        <p className="text-sm font-bold tabular-nums text-[var(--text-primary)]">23 / 25</p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 flex-shrink-0 rounded-full bg-[var(--action-primary-bg)] text-white flex items-center justify-center text-xs font-bold shadow-md">
+                            {category.coachInitials}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">{category.coachName}</p>
+                            <p className="text-xs text-[var(--text-tertiary)] truncate">{category.coachTitle}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="h-2 w-2 rounded-full bg-[var(--status-success-text)]" />
+                            <span className="text-xs font-semibold text-[var(--status-success-text)]">Active</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="h-2 rounded-full bg-[var(--surface-subtle)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--action-primary-bg)] transition-all"
-                          style={{ width: "92%" }}
-                        />
+
+                      {/* Attendance progress */}
+                      <div className="px-6 py-4">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                            Today&apos;s Attendance
+                          </p>
+                          <p className="text-sm font-bold tabular-nums text-[var(--text-primary)]">
+                            {category.attendancePresent} / {category.attendanceTotal}
+                          </p>
+                        </div>
+                        <div className="h-2 rounded-full bg-[var(--surface-subtle)] overflow-hidden">
+                          <motion.div
+                            key={`bar-${activeCategoryIdx}`}
+                            initial={{ scaleX: 0 }}
+                            animate={{ scaleX: attendancePct / 100 }}
+                            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                            className="h-full rounded-full bg-[var(--action-primary-bg)] origin-left"
+                          />
+                        </div>
+                        <p className="text-xs font-semibold text-[var(--status-success-text)] mt-2">
+                          {attendancePct}% present · Marked via QR
+                        </p>
                       </div>
-                      <p className="text-xs font-semibold text-[var(--status-success-text)] mt-2">
-                        92% present · Marked via QR
-                      </p>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* ── Visual 1: Overdue members + WhatsApp CTA ── */}

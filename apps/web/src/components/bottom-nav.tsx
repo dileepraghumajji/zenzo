@@ -14,9 +14,14 @@ import {
   Settings,
   MoreHorizontal,
   X,
+  Building2,
+  ChevronRight,
+  Plus,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@zenzo/ui";
 import { StaffRole } from "@zenzo/database/enums";
+import type { ClubStub } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +33,6 @@ interface BottomNavItem {
 
 // ─── Nav definitions ──────────────────────────────────────────────────────────
 
-// Max 4 primary items — "More" occupies the 5th slot
 const ownerPrimaryItems: BottomNavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",  href: "dashboard" },
   { icon: Users,           label: "Members",    href: "members" },
@@ -37,10 +41,11 @@ const ownerPrimaryItems: BottomNavItem[] = [
 ];
 
 const ownerMoreItems: BottomNavItem[] = [
-  { icon: CalendarDays, label: "Batches",  href: "batches" },
-  { icon: CreditCard,   label: "Plans",    href: "plans" },
-  { icon: UserCheck,    label: "Staff",    href: "staff" },
-  { icon: Settings,     label: "Settings", href: "settings" },
+  { icon: CalendarDays, label: "Batches",  href: "batches"   },
+  { icon: CreditCard,   label: "Plans",    href: "plans"     },
+  { icon: BarChart3,    label: "Reports",  href: "reports"   },
+  { icon: UserCheck,    label: "Staff",    href: "staff"     },
+  { icon: Settings,     label: "Settings", href: "settings"  },
 ];
 
 const coachPrimaryItems: BottomNavItem[] = [
@@ -54,11 +59,16 @@ const coachPrimaryItems: BottomNavItem[] = [
 export interface BottomNavProps {
   clubSlug: string;
   role?: StaffRole;
+  allClubs?: ClubStub[];
 }
 
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
-export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) {
+export function BottomNav({
+  clubSlug,
+  role = StaffRole.Owner,
+  allClubs = [],
+}: BottomNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = React.useState(false);
 
@@ -69,7 +79,6 @@ export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) 
     pathname === `/${clubSlug}/${href}` ||
     pathname.startsWith(`/${clubSlug}/${href}/`);
 
-  // Close More sheet on route change
   React.useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
@@ -79,13 +88,9 @@ export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) 
       {/* ── Tab bar ── */}
       <nav
         className={cn(
-          // Mobile/tablet only
           "flex lg:hidden",
-          // Fixed to bottom
           "fixed bottom-0 inset-x-0 z-40",
-          // Surface
           "bg-background border-t border-border",
-          // Height + safe area (handles iPhone notch)
           "h-14 pb-[env(safe-area-inset-bottom)]"
         )}
         aria-label="Main navigation"
@@ -112,7 +117,6 @@ export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) 
           );
         })}
 
-        {/* More button — shown only when there are overflow items */}
         {moreItems.length > 0 && (
           <button
             onClick={() => setMoreOpen(true)}
@@ -130,12 +134,12 @@ export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) 
         )}
       </nav>
 
-      {/* ── More sheet (inline — replaced by BottomSheet component in Task 16) ── */}
       {moreOpen && (
         <MoreSheet
           clubSlug={clubSlug}
           items={moreItems}
           activeCheck={isActive}
+          allClubs={allClubs}
           onClose={() => setMoreOpen(false)}
         />
       )}
@@ -144,29 +148,29 @@ export function BottomNav({ clubSlug, role = StaffRole.Owner }: BottomNavProps) 
 }
 
 // ─── MoreSheet ────────────────────────────────────────────────────────────────
-// Minimal slide-up sheet. Will be replaced by the BottomSheet component (Task 16).
 
 function MoreSheet({
   clubSlug,
   items,
   activeCheck,
+  allClubs,
   onClose,
 }: {
   clubSlug: string;
   items: BottomNavItem[];
   activeCheck: (href: string) => boolean;
+  allClubs: ClubStub[];
   onClose: () => void;
 }) {
+  const otherClubs = allClubs.filter((c) => c.slug !== clubSlug);
+
   return (
     <>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/40"
         onClick={onClose}
         aria-hidden="true"
       />
-
-      {/* Sheet */}
       <div
         className={cn(
           "fixed bottom-0 inset-x-0 z-50",
@@ -193,7 +197,7 @@ function MoreSheet({
           </button>
         </div>
 
-        {/* Items */}
+        {/* Nav items */}
         <nav className="p-2">
           {items.map((item) => {
             const Icon = item.icon;
@@ -217,6 +221,42 @@ function MoreSheet({
             );
           })}
         </nav>
+
+        {/* Club switcher section */}
+        {allClubs.length > 1 && (
+          <div className="border-t border-border px-2 py-2">
+            <p className="px-3 py-1 text-[11px] text-muted uppercase tracking-wider font-medium">
+              Switch Club
+            </p>
+            {otherClubs.map((club) => (
+              <Link
+                key={club.slug}
+                href={`/${club.slug}/dashboard`}
+                onClick={onClose}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-surface-subtle transition-colors"
+              >
+                <div className="size-7 rounded-md bg-surface-elevated border border-border flex items-center justify-center flex-shrink-0">
+                  <Building2 className="size-4 text-muted" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-medium truncate">{club.name}</p>
+                  <p className="text-[11px] text-muted capitalize">{club.role}</p>
+                </div>
+                <ChevronRight className="size-4 text-muted flex-shrink-0" />
+              </Link>
+            ))}
+            <Link
+              href="/onboarding/new-club"
+              onClick={onClose}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted hover:text-foreground hover:bg-surface-subtle transition-colors"
+            >
+              <div className="size-7 rounded-md border border-dashed border-border flex items-center justify-center flex-shrink-0">
+                <Plus className="size-4" />
+              </div>
+              <span className="text-[14px]">Create new club</span>
+            </Link>
+          </div>
+        )}
       </div>
     </>
   );

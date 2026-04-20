@@ -14,9 +14,15 @@ import {
   CreditCard,
   PanelLeftClose,
   PanelLeftOpen,
+  Building2,
+  ChevronDown,
+  Check,
+  Plus,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@zenzo/ui";
 import { StaffRole } from "@zenzo/database/enums";
+import type { ClubStub } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,8 +44,9 @@ const ownerPrimaryNav: NavItem[] = [
 ];
 
 const ownerSecondaryNav: NavItem[] = [
-  { icon: UserCheck, label: "Staff",    href: "staff" },
-  { icon: Settings,  label: "Settings", href: "settings" },
+  { icon: BarChart3,  label: "Reports",  href: "reports"   },
+  { icon: UserCheck,  label: "Staff",    href: "staff"     },
+  { icon: Settings,   label: "Settings", href: "settings"  },
 ];
 
 const coachPrimaryNav: NavItem[] = [
@@ -55,6 +62,7 @@ export interface SidebarProps {
   role?: StaffRole;
   userName?: string;
   userInitials?: string;
+  allClubs?: ClubStub[];
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -64,15 +72,28 @@ export function Sidebar({
   role = StaffRole.Owner,
   userName = "User",
   userInitials = "U",
+  allClubs = [],
 }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const switcherRef = React.useRef<HTMLDivElement>(null);
 
-  // Restore collapse state from localStorage on mount
   React.useEffect(() => {
     const stored = localStorage.getItem("zenzo-sidebar-collapsed");
     if (stored === "true") setIsCollapsed(true);
   }, []);
+
+  // Close switcher on outside click
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
+        setSwitcherOpen(false);
+      }
+    }
+    if (switcherOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [switcherOpen]);
 
   const toggle = () => {
     setIsCollapsed((prev) => {
@@ -89,16 +110,15 @@ export function Sidebar({
     pathname === `/${clubSlug}/${href}` ||
     pathname.startsWith(`/${clubSlug}/${href}/`);
 
+  const currentClub = allClubs.find((c) => c.slug === clubSlug);
+  const otherClubs = allClubs.filter((c) => c.slug !== clubSlug);
+
   return (
     <aside
       className={cn(
-        // Desktop only — mobile uses bottom nav
         "hidden lg:flex flex-col flex-shrink-0",
-        // Fill viewport height, scroll internally if nav overflows
         "overflow-y-auto overflow-x-hidden",
-        // Surface
         "bg-background border-r border-border",
-        // Collapse transition
         "transition-[width] duration-200 ease-in-out",
         isCollapsed ? "w-16" : "w-60"
       )}
@@ -110,11 +130,9 @@ export function Sidebar({
           isCollapsed ? "justify-center px-0" : "gap-2.5"
         )}
       >
-        {/* Brand mark */}
         <div className="size-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
           <span className="text-primary-foreground font-bold text-[14px]">Z</span>
         </div>
-        {/* Brand name — fades out before width finishes */}
         <span
           className={cn(
             "font-semibold text-heading text-[15px] whitespace-nowrap",
@@ -138,7 +156,6 @@ export function Sidebar({
           />
         ))}
 
-        {/* Divider + secondary nav (owner only) */}
         {secondaryNav.length > 0 && (
           <>
             <div className="my-2 h-px bg-border" aria-hidden="true" />
@@ -155,8 +172,100 @@ export function Sidebar({
         )}
       </nav>
 
-      {/* ── Bottom: user row + collapse toggle ── */}
+      {/* ── Bottom: club switcher + user row + collapse toggle ── */}
       <div className="flex-shrink-0 border-t border-border p-2 space-y-1">
+
+        {/* Club switcher */}
+        {allClubs.length > 0 && (
+          <div ref={switcherRef} className="relative">
+            <button
+              onClick={() => {
+                if (!isCollapsed) setSwitcherOpen((o) => !o);
+              }}
+              title={isCollapsed ? (currentClub?.name ?? clubSlug) : undefined}
+              className={cn(
+                "w-full flex items-center gap-2 px-2 py-1.5 rounded-md",
+                "hover:bg-surface-subtle transition-colors duration-150",
+                isCollapsed ? "justify-center" : "justify-between"
+              )}
+            >
+              <div className={cn("flex items-center gap-2 min-w-0", isCollapsed && "justify-center")}>
+                <div className="size-5 rounded flex items-center justify-center bg-primary-subtle flex-shrink-0">
+                  <Building2 className="size-3 text-brand" />
+                </div>
+                <span
+                  className={cn(
+                    "text-[13px] text-foreground font-medium truncate",
+                    "transition-opacity duration-[120ms]",
+                    isCollapsed ? "opacity-0 pointer-events-none w-0 overflow-hidden" : "opacity-100"
+                  )}
+                >
+                  {currentClub?.name ?? clubSlug}
+                </span>
+              </div>
+              {!isCollapsed && (
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 text-muted flex-shrink-0 transition-transform duration-150",
+                    switcherOpen && "rotate-180"
+                  )}
+                />
+              )}
+            </button>
+
+            {/* Switcher dropdown */}
+            {switcherOpen && !isCollapsed && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-surface-raised border border-border rounded-lg shadow-lg overflow-hidden z-50">
+                {/* Current club */}
+                <div className="px-3 py-2 border-b border-border">
+                  <p className="text-[11px] text-muted uppercase tracking-wider font-medium mb-1">Current club</p>
+                  <div className="flex items-center gap-2">
+                    <Check className="size-3.5 text-brand flex-shrink-0" />
+                    <span className="text-[13px] text-foreground font-medium truncate">
+                      {currentClub?.name ?? clubSlug}
+                    </span>
+                    <span className="ml-auto text-[11px] text-muted capitalize flex-shrink-0">
+                      {currentClub?.role}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Other clubs */}
+                {otherClubs.length > 0 && (
+                  <div className="py-1">
+                    {otherClubs.map((club) => (
+                      <Link
+                        key={club.slug}
+                        href={`/${club.slug}/dashboard`}
+                        onClick={() => setSwitcherOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-surface-subtle transition-colors"
+                      >
+                        <div className="size-5 rounded bg-border flex items-center justify-center flex-shrink-0">
+                          <Building2 className="size-3 text-muted" />
+                        </div>
+                        <span className="text-[13px] text-foreground truncate flex-1">{club.name}</span>
+                        <span className="text-[11px] text-muted capitalize flex-shrink-0">{club.role}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                {/* Create new club */}
+                <div className="border-t border-border py-1">
+                  <Link
+                    href="/onboarding/new-club"
+                    onClick={() => setSwitcherOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-surface-subtle transition-colors text-muted hover:text-foreground"
+                  >
+                    <Plus className="size-3.5 flex-shrink-0" />
+                    <span className="text-[13px]">Create new club</span>
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* User */}
         <div
           className={cn(
@@ -165,7 +274,6 @@ export function Sidebar({
           )}
           title={isCollapsed ? userName : undefined}
         >
-          {/* Mini avatar */}
           <div className="size-7 rounded-full bg-primary-subtle flex items-center justify-center flex-shrink-0">
             <span className="text-brand text-[11px] font-semibold leading-none">
               {userInitials}
@@ -198,13 +306,7 @@ export function Sidebar({
           ) : (
             <>
               <PanelLeftClose className="size-4 flex-shrink-0" />
-              <span
-                className={cn(
-                  "text-[13px] whitespace-nowrap",
-                  "transition-opacity duration-[120ms]",
-                  isCollapsed ? "opacity-0" : "opacity-100"
-                )}
-              >
+              <span className="text-[13px] whitespace-nowrap transition-opacity duration-[120ms]">
                 Collapse
               </span>
             </>
@@ -244,17 +346,13 @@ function SidebarNavItem({
           : "text-foreground hover:bg-surface-subtle"
       )}
     >
-      {/* Active indicator — 3px pill on left edge */}
       {active && (
         <span
           className="absolute left-0 inset-y-[4px] w-[3px] rounded-r-full bg-primary"
           aria-hidden="true"
         />
       )}
-
       <Icon className="size-5 flex-shrink-0" />
-
-      {/* Label — fades before sidebar width finishes collapsing */}
       <span
         className={cn(
           "transition-opacity duration-[120ms]",
@@ -268,41 +366,32 @@ function SidebarNavItem({
 }
 
 // ─── SidebarSkeleton ──────────────────────────────────────────────────────────
-// Shown via Suspense while the user role is being fetched server-side.
-// Mirrors the Sidebar's exact dimensions so there's no layout shift on hydration.
 
 export function SidebarSkeleton() {
   return (
     <aside className="hidden lg:flex flex-col flex-shrink-0 w-60 overflow-hidden bg-background border-r border-border">
-      {/* Logo row */}
       <div className="flex items-center gap-2.5 h-16 px-4 border-b border-border">
         <div className="size-8 rounded-md skeleton-shimmer flex-shrink-0" />
         <div className="h-4 w-16 rounded skeleton-shimmer" />
       </div>
-
-      {/* Primary nav — 6 items */}
       <div className="flex-1 py-3 px-2 space-y-0.5">
         {Array.from({ length: 6 }).map((_, i) => (
           <SkeletonNavItem key={i} />
         ))}
-
-        {/* Divider */}
         <div className="my-2 h-px bg-border" />
-
-        {/* Secondary nav — 4 items */}
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: 3 }).map((_, i) => (
           <SkeletonNavItem key={`s${i}`} />
         ))}
       </div>
-
-      {/* Bottom */}
       <div className="flex-shrink-0 border-t border-border p-2 space-y-1">
-        {/* User row */}
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <div className="size-5 rounded skeleton-shimmer flex-shrink-0" />
+          <div className="h-3 w-32 rounded skeleton-shimmer" />
+        </div>
         <div className="flex items-center gap-2.5 px-2 py-1.5">
           <div className="size-7 rounded-full skeleton-shimmer flex-shrink-0" />
           <div className="h-3 w-24 rounded skeleton-shimmer" />
         </div>
-        {/* Collapse toggle row */}
         <div className="flex items-center gap-2.5 px-2 py-1.5">
           <div className="size-4 rounded skeleton-shimmer flex-shrink-0" />
           <div className="h-3 w-14 rounded skeleton-shimmer" />

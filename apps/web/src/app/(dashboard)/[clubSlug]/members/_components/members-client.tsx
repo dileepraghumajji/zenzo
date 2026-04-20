@@ -34,7 +34,7 @@ import {
   DialogClose,
   cn,
 } from "@zenzo/ui";
-import { formatCurrency } from "@zenzo/utils";
+import { formatCurrency, formatDueDate } from "@zenzo/utils";
 import { MembershipStatus } from "@zenzo/database/enums";
 import { Skeleton } from "@/components/skeleton";
 
@@ -47,6 +47,7 @@ export interface MemberRow {
   phone: string;
   status: MembershipStatus;
   joinedAt: string;
+  nextDueDate: string | null;
   planName: string | null;
   planAmountPaise: number | null;
   batchNames: string[];
@@ -268,7 +269,7 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
                   aria-label="Select all on page"
                 />
               </th>
-              {(["Name", "Phone", "Batch", "Status", "Plan"] as const).map((col) => (
+              {(["Name", "Phone", "Batch", "Status", "Due Date", "Plan"] as const).map((col) => (
                 <th
                   key={col}
                   className="text-left px-4 py-3 text-[12px] font-medium text-muted uppercase tracking-[0.04em]"
@@ -282,7 +283,7 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
           <tbody className="divide-y divide-border">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-[13px] text-muted">
                   No members match your search.
                 </td>
               </tr>
@@ -291,6 +292,7 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
                 const statusCfg = STATUS_CONFIG[member.status];
                 const profileHref = `/${clubSlug}/members/${member.userId}`;
                 const isChecked = selected.has(member.id);
+                const { label: dueLabel, urgent: dueUrgent } = formatDueDate(member.nextDueDate);
                 return (
                   <tr
                     key={member.id}
@@ -341,6 +343,13 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
                         dot
                         size="sm"
                       />
+                    </td>
+
+                    {/* Due date */}
+                    <td className="px-4 py-3 text-[13px]">
+                      <span className={dueUrgent ? "text-error-foreground font-medium" : "text-muted"}>
+                        {dueLabel}
+                      </span>
                     </td>
 
                     {/* Plan — right-aligned mono per manifesto */}
@@ -400,6 +409,7 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
         ) : (
           paginated.map((member) => {
             const statusCfg = STATUS_CONFIG[member.status];
+            const { label: dueLabel, urgent: dueUrgent } = formatDueDate(member.nextDueDate);
             return (
               <Link
                 key={member.id}
@@ -428,6 +438,11 @@ export function MembersClient({ members, clubSlug }: MembersClientProps) {
                       </>
                     )}
                   </p>
+                  {dueLabel !== "—" && (
+                    <p className={cn("text-[12px] mt-0.5", dueUrgent ? "text-error-foreground font-medium" : "text-muted")}>
+                      {dueLabel}
+                    </p>
+                  )}
                 </div>
                 <Badge
                   variant={statusCfg.variant}

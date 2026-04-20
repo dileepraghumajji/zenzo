@@ -27,7 +27,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
-import { MembershipStatus } from "@zenzo/database/enums";
+import { BillingCycle, InviteStatus, MembershipStatus } from "@zenzo/database/enums";
+import { calculateNextDueDate } from "@zenzo/utils";
+import { sendEmail, isNotifEnabled } from "@/lib/email";
+import { welcomeEmailHtml } from "@/lib/email-templates/welcome";
+import { APP_URL } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   // ── 1. Auth ─────────────────────────────────────────────────────────────────
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invite not found" }, { status: 404 });
     }
 
-    if (invite.status !== "pending") {
+    if (invite.status !== InviteStatus.Pending) {
       return NextResponse.json({ error: "Invite already used or expired" }, { status: 404 });
     }
 
@@ -80,7 +84,7 @@ export async function POST(request: NextRequest) {
       // Mark as expired
       await admin
         .from("club_invites")
-        .update({ status: "expired" })
+        .update({ status: InviteStatus.Expired })
         .eq("id", invite.id);
       return NextResponse.json({ error: "Invite has expired" }, { status: 404 });
     }
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
     .from("club_invites")
     .select("id, club_id, plan_id, batch_id, status, expires_at, email")
     .eq("email", userRow.email)
-    .eq("status", "pending")
+    .eq("status", InviteStatus.Pending)
     .gt("expires_at", now);
 
   if (!invites || invites.length === 0) {
@@ -157,7 +161,7 @@ async function activateInvite({
     // Mark invite accepted anyway (user is already a member)
     await admin
       .from("club_invites")
-      .update({ status: "accepted" })
+      .update({ status: InviteStatus.Accepted })
       .eq("id", invite.id);
     return NextResponse.json(
       { error: "already_a_member", membershipId: existing.id },
@@ -165,8 +169,17 @@ async function activateInvite({
     );
   }
 
-  // Create membership
+  // Create membership — fetch plan billing_cycle to set next_due_date
   const today = new Date().toISOString().slice(0, 10);
+
+  const planCycleResult = invite.plan_id
+    ? await admin.from("fee_plans").select("billing_cycle").eq("id", invite.plan_id).single()
+    : { data: null };
+
+  const nextDueDate = planCycleResult.data?.billing_cycle
+    ? calculateNextDueDate(today, planCycleResult.data.billing_cycle as BillingCycle)
+    : null;
+
   const { data: membership, error: membershipError } = await admin
     .from("club_memberships")
     .insert({
@@ -175,7 +188,7 @@ async function activateInvite({
       plan_id:       invite.plan_id,
       status:        MembershipStatus.Active,
       joined_at:     today,
-      next_due_date: null,
+      next_due_date: nextDueDate,
       deleted_at:    null,
     })
     .select("id")
@@ -198,8 +211,53 @@ async function activateInvite({
   // Mark invite as accepted
   await admin
     .from("club_invites")
-    .update({ status: "accepted" })
+    .update({ status: InviteStatus.Accepted })
     .eq("id", invite.id);
 
+  // Send welcome email — fire-and-forget, don't block the response
+  void sendWelcomeEmail({ admin, userId, clubId: invite.club_id, planId: invite.plan_id, membershipId: membership.id });
+
   return NextResponse.json({ status: "activated", membershipId: membership.id });
+}
+
+async function sendWelcomeEmail({
+  admin,
+  userId,
+  clubId,
+  planId,
+  membershipId,
+}: {
+  admin: AdminClient;
+  userId: string;
+  clubId: string;
+  planId: string | null;
+  membershipId: string;
+}): Promise<void> {
+  // Fetch user + club + plan in parallel
+  const [userResult, clubResult, planResult] = await Promise.all([
+    admin.from("users").select("email, full_name").eq("id", userId).single(),
+    admin.from("clubs").select("name, terminology").eq("id", clubId).single(),
+    planId
+      ? admin.from("fee_plans").select("name").eq("id", planId).single()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const userRow  = userResult.data;
+  const clubRow  = clubResult.data;
+  const planRow  = planResult.data;
+
+  if (!userRow || !clubRow) return;
+
+  if (!isNotifEnabled(clubRow.terminology as Record<string, unknown> | null, "notif_welcome_message")) return;
+
+  await sendEmail({
+    to: userRow.email,
+    subject: `Welcome to ${clubRow.name} 🎉`,
+    html: welcomeEmailHtml({
+      memberName: userRow.full_name,
+      clubName:   clubRow.name,
+      planName:   planRow?.name ?? null,
+      portalUrl:  `${APP_URL}/portal`,
+    }),
+  });
 }

@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@zenzo/database": "workspace:*"
+  },
   "devDependencies": {
     "@zenzo/config": "workspace:*",
     "typescript": "^5.4.5"

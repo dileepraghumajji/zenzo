@@ -437,11 +437,20 @@ Sprint MK2 (Marketing Page — Pending Enhancements) complete:
 - **T1** — `DarkFooter` is now a pure Server Component (removed `"use client"` + framer-motion). Entrance animation replaced with CSS `@keyframes footerFadeUp` scoped inside a `<style>` tag.
 - **T3** — `FeatureSections` wrapped with `next/dynamic` in `page.tsx` for JS code-splitting (SSR preserved).
 
+### Session 25 — 2026-04-10
+Sprint N (Notifications) + Sprint Off (Offline Attendance) complete:
+- **N1** — Installed `resend` package. `lib/email.ts`: `sendEmail()` wrapper (skips silently if `RESEND_API_KEY` not set). `lib/email-templates/`: `invite.ts`, `welcome.ts`, `receipt.ts`, `reminder.ts`.
+- **N2** — `POST /api/members/invite`: Resend invite email replaces raw `inviteUserByEmail`. Fetches inviter name + plan name. Fires only when email provided.
+- **N3** — `POST /api/auth/activate-invite`: fire-and-forget welcome email after activation. Checks `notif_welcome_message` toggle in `clubs.terminology`.
+- **N4** — `POST /api/members/[membershipId]/payments`: fire-and-forget receipt email after payment insert. Checks `notif_payment_receipt` toggle. Fixed `select("*")` → explicit columns.
+- **N5** — `GET /api/cron/expire-memberships`: batch-sends reminder emails to newly-overdue memberships. Checks `notif_payment_reminder` toggle per club.
+- **Off1** — `lib/attendance-db.ts`: IndexedDB store (`zenzo-attendance`). API: `saveDraft`, `queueForSync`, `loadSession`, `clearSession`, `getAllQueued`.
+- **Off2+3** — `take-attendance-client.tsx`: draft saved on every toggle, restored on mount, network failures queue to IndexedDB, `online` listener auto-retries queue, sync-status pill, offline banner, button label adapts.
+
 ### Up Next
 1. D5 — Real photography of gyms/coaches (needs assets from user)
-2. Sprint OA — Offline Attendance
-3. Sprint N — Notifications via Resend (email transactionals)
-4. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+2. Android app (React Native / Expo) — Phase 2 consumer app
+3. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LogOut, Building2, ChevronRight, CheckCircle2 } from "lucide-react";
+import { LogOut, Building2, ChevronRight, Plus } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -98,6 +98,20 @@ export default async function ClubsPickerPage() {
             </Link>
           ))}
         </div>
+
+        {/* Create new club */}
+        <Link
+          href="/onboarding/new-club"
+          className="group flex items-center gap-4 bg-surface-raised border border-dashed border-border hover:border-brand/40 hover:bg-surface-subtle rounded-xl p-5 transition-all duration-standard"
+        >
+          <div className="size-12 rounded-lg border border-dashed border-border flex items-center justify-center group-hover:border-brand/40 group-hover:bg-primary-subtle transition-colors">
+            <Plus className="size-5 text-muted group-hover:text-brand transition-colors" />
+          </div>
+          <div>
+            <p className="text-h4 text-heading font-medium">Create another club</p>
+            <p className="text-caption text-muted mt-0.5">Add a new branch or studio</p>
+          </div>
+        </Link>
 
         <div className="mt-8 flex justify-center">
           <form action="/api/auth/signout" method="POST">

@@ -73,6 +73,12 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#C84A08" />
         <meta name="color-scheme" content="light dark" />
+        {/* Service worker registration — enables offline attendance */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js')}`,
+          }}
+        />
       </head>
       <body>
         <ThemeProvider>

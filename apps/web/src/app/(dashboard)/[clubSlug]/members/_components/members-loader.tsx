@@ -33,7 +33,7 @@ export async function MembersLoader({ clubSlug }: MembersLoaderProps) {
   // ── 2. Fetch memberships with user + plan info ───────────────────────────────
   const { data: memberships, error: membershipsError } = await supabase
     .from("club_memberships")
-    .select("id, user_id, status, joined_at, users(full_name, phone), fee_plans(name, amount_paise)")
+    .select("id, user_id, status, joined_at, next_due_date, users(full_name, phone), fee_plans(name, amount_paise)")
     .eq("club_id", club.id)
     .is("deleted_at", null)
     .order("joined_at", { ascending: false });
@@ -75,6 +75,7 @@ export async function MembersLoader({ clubSlug }: MembersLoaderProps) {
     phone:           m.users?.phone     ?? "",
     status:          m.status as MembershipStatus,
     joinedAt:        m.joined_at,
+    nextDueDate:     m.next_due_date ?? null,
     planName:        m.fee_plans?.name        ?? null,
     planAmountPaise: m.fee_plans?.amount_paise ?? null,
     batchNames:      batchMap.get(m.id) ?? [],

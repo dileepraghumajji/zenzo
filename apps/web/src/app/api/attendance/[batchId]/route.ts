@@ -23,7 +23,9 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { clubSlug, date, records } = body;
+  const { clubSlug, date, records, skipExisting } = body;
+  // skipExisting: true is sent by the offline sync-on-reconnect loop so that
+  // records already confirmed on the server are not overwritten by stale local data.
 
   if (!clubSlug || !date || !Array.isArray(records)) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -94,7 +96,10 @@ export async function POST(
 
   const { error } = await supabase
     .from("attendance_records")
-    .upsert(rows, { onConflict: "membership_id,batch_id,date" });
+    .upsert(rows, {
+      onConflict: "membership_id,batch_id,date",
+      ignoreDuplicates: skipExisting === true,
+    });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
