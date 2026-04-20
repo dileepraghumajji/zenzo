@@ -9,8 +9,6 @@
 
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const FROM =
   process.env.RESEND_FROM_EMAIL ?? "Zenzo <no-reply@mail.zenzo.app>";
 
@@ -32,11 +30,11 @@ export async function sendEmail({
   html: string;
 }): Promise<void> {
   if (!process.env.RESEND_API_KEY) {
-    // Dev / CI: skip silently rather than crashing
     console.warn("[email] RESEND_API_KEY not set — skipping email to", to);
     return;
   }
 
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const { error } = await resend.emails.send({ from: FROM, to, subject, html });
 
   if (error) {
