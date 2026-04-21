@@ -89,7 +89,7 @@ export default function InterestsPage() {
         throw new Error("Failed to save");
       }
       
-      router.push("/discover");
+      router.push("/portal");
       router.refresh();
     } catch {
       toast.error("Couldn't save interests. Please try again.");
@@ -110,7 +110,7 @@ export default function InterestsPage() {
          await supabase.from("users").update({ onboarding_step: "interests_skipped" }).eq("id", user.id);
       }
 
-      router.push("/discover");
+      router.push("/portal");
       router.refresh();
     } catch {
       toast.error("Couldn't skip. Please try again.");

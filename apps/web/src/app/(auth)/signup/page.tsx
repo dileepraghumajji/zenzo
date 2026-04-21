@@ -212,8 +212,8 @@ function SignupForm() {
       }
 
       // The handle_new_user() trigger auto-creates the users row.
-      // Members and new users go to /portal; owners start onboarding from there.
-      router.push("/portal");
+      // New users go through interest onboarding first, then discover/portal.
+      router.push("/onboarding/interests");
     } catch {
       setErrors({ form: "Network error. Please try again." });
     } finally {

@@ -47,6 +47,11 @@ export async function POST() {
     const onboardingDone = profileRes.data?.onboarding_step !== null;
     const hasMemberships = (membershipsRes.count ?? 0) > 0;
 
+    // New user who hasn't completed interest onboarding → send there first.
+    if (!onboardingDone && !hasMemberships) {
+      return NextResponse.json({ destination: "/onboarding/interests" });
+    }
+
     if (onboardingDone && !hasMemberships) {
       return NextResponse.json({ destination: "/discover" });
     }

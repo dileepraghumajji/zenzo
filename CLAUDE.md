@@ -512,6 +512,14 @@ Sprint UC7 (Razorpay Member Payments) complete:
 - **`lib/razorpay.ts`** — `createRazorpay()` factory (throws clearly if env vars missing).
 - **Env vars required**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `NEXT_PUBLIC_RAZORPAY_KEY_ID`.
 
+### Session 33 — 2026-04-21
+Consumer onboarding routing fixes:
+- **Signup**: Changed post-signup redirect from `/portal` → `/onboarding/interests` so new email/password users always go through interest selection first.
+- **Auth callback**: New OAuth users (no staff rows, `onboarding_step` is null) now redirect to `/onboarding/interests` instead of `/portal`.
+- **Interest page**: After saving interests or skipping, redirects to `/portal` (which then redirects to `/discover` if no memberships), rather than hardcoding `/discover` — so invited members with memberships land on their clubs.
+- **api/auth/profile**: Added case for `!onboardingDone && !hasMemberships` → `/onboarding/interests` to handle returning users (existed before interests feature) who haven't done onboarding.
+- **Portal quick links**: Changed "Explore" → `/discover` (was incorrectly pointing to the old `/explore` page).
+
 ### Up Next
 1. D5 — Real photography of gyms/coaches (needs assets from user)
 2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
