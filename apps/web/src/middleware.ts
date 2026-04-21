@@ -32,16 +32,22 @@ const PUBLIC_PATHS = [
   "/m/",            // member portal (token-gated, not session-gated)
   "/checkin",       // QR code attendance check-in (token-gated, no session needed)
   "/api/checkin",   // QR check-in API (public, token-gated)
+  "/api/search",    // search API — clubs/coaches tabs are public; members tab handles auth itself
+  "/u/",            // public member profiles
+  "/coaches/",      // public coach profiles
+  "/clubs/",        // public club pages
+  "/explore",       // public club discovery
 ];
 
 function isPublicPath(pathname: string): boolean {
+  if (pathname.startsWith("/onboarding/interests")) return false;
   return PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 }
 
 // Routes that require authentication (dashboard routes match /:tenantSlug/*)
 function isDashboardPath(pathname: string): boolean {
   // Match /something/something — at least two segments means a tenant route
-  return /^\/[^/]+\//.test(pathname);
+  return /^\/[^/]+\//.test(pathname) || pathname.startsWith("/discover") || pathname.startsWith("/portal") || pathname.startsWith("/profile");
 }
 
 export async function middleware(request: NextRequest) {

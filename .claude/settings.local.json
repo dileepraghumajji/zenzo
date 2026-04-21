@@ -26,7 +26,8 @@
       "Bash(ls d:/projects/zenzo/apps/web/.env*)",
       "Bash(ls d:/projects/zenzo/.env*)",
       "Bash(pnpm install:*)",
-      "Bash(pnpm --filter @zenzo/web add resend)"
+      "Bash(pnpm --filter @zenzo/web add resend)",
+      "Bash(pnpm -r type-check)"
     ]
   }
 }

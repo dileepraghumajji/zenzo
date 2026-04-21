@@ -31,10 +31,11 @@ export const BillingCycle = {
 export type BillingCycle = (typeof BillingCycle)[keyof typeof BillingCycle];
 
 export const PaymentMethod = {
-  Cash:  "cash",
-  UPI:   "upi",
-  Bank:  "bank",
-  Other: "other",
+  Cash:     "cash",
+  UPI:      "upi",
+  Bank:     "bank",
+  Razorpay: "razorpay",
+  Other:    "other",
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 
@@ -73,3 +74,45 @@ export const InviteStatus = {
   Expired:  "expired",
 } as const;
 export type InviteStatus = (typeof InviteStatus)[keyof typeof InviteStatus];
+
+export const InterestSlug = {
+  MartialArts: "martial_arts",
+  Fitness:     "fitness",
+  Dance:       "dance",
+  Yoga:        "yoga",
+  Boxing:      "boxing",
+  Swimming:    "swimming",
+  Crossfit:    "crossfit",
+  Other:       "other",
+} as const;
+export type InterestSlug = (typeof InterestSlug)[keyof typeof InterestSlug];
+
+export const INTEREST_CATEGORIES = [
+  { slug: InterestSlug.MartialArts, label: "Martial Arts", icon: "🥋", color: "text-red-500 bg-red-500/10" },
+  { slug: InterestSlug.Fitness, label: "Fitness", icon: "🏋️", color: "text-blue-500 bg-blue-500/10" },
+  { slug: InterestSlug.Dance, label: "Dance", icon: "💃", color: "text-pink-500 bg-pink-500/10" },
+  { slug: InterestSlug.Yoga, label: "Yoga", icon: "🧘", color: "text-emerald-500 bg-emerald-500/10" },
+  { slug: InterestSlug.Boxing, label: "Boxing", icon: "🥊", color: "text-orange-500 bg-orange-500/10" },
+  { slug: InterestSlug.Swimming, label: "Swimming", icon: "🏊", color: "text-cyan-500 bg-cyan-500/10" },
+  { slug: InterestSlug.Crossfit, label: "CrossFit", icon: "💪", color: "text-stone-500 bg-stone-500/10" },
+  { slug: InterestSlug.Other, label: "Other", icon: "🎯", color: "text-purple-500 bg-purple-500/10" },
+] as const;
+
+export const RESERVED_USERNAMES = [
+  "admin", "zenzo", "support", "api", "portal", "discover", "search", "profile", "settings", "help", "about"
+] as const;
+
+export const ACHIEVEMENT_TEMPLATES = [
+  { slug: "100_classes",       title: "100 Classes",       icon: "💯", description: "Attended 100 classes" },
+  { slug: "1_year_member",     title: "1 Year Member",     icon: "🎂", description: "Been a member for 1 year" },
+  { slug: "blue_belt",         title: "Blue Belt",         icon: "🥋", description: "Promoted to Blue Belt" },
+  { slug: "top_performer",     title: "Top Performer",     icon: "🏆", description: "Outstanding performance this month" },
+  { slug: "first_class",       title: "First Class",       icon: "⭐", description: "Attended their first class" },
+  { slug: "iron_will",         title: "Iron Will",         icon: "🔥", description: "Showed exceptional determination" },
+  { slug: "rising_star",       title: "Rising Star",       icon: "🌟", description: "Rapid skill improvement" },
+  { slug: "team_player",       title: "Team Player",       icon: "🤝", description: "Great team spirit and support" },
+  { slug: "perfect_week",      title: "Perfect Week",      icon: "✅", description: "Attended all sessions in a week" },
+  { slug: "marathon_month",    title: "Marathon Month",    icon: "📅", description: "Attended 20+ sessions in a month" },
+  { slug: "consistency_king",  title: "Consistency King",  icon: "👑", description: "3 months of consistent attendance" },
+  { slug: "custom",            title: "Custom",            icon: "🎯", description: "" },
+] as const;

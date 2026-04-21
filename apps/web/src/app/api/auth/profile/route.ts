@@ -31,8 +31,26 @@ export async function POST() {
     .select("role, club_id")
     .eq("user_id", user.id);
 
-  // No club_staff rows → member or brand-new user → go to portal
+  // No club_staff rows → consumer or brand-new user
   if (!staff || staff.length === 0) {
+    // If they've completed interest onboarding and have no memberships, send to discover.
+    // Otherwise send to portal (which redirects to discover if still no memberships).
+    const [profileRes, membershipsRes] = await Promise.all([
+      supabase.from("users").select("onboarding_step").eq("id", user.id).single(),
+      supabase
+        .from("club_memberships")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .is("deleted_at", null),
+    ]);
+
+    const onboardingDone = profileRes.data?.onboarding_step !== null;
+    const hasMemberships = (membershipsRes.count ?? 0) > 0;
+
+    if (onboardingDone && !hasMemberships) {
+      return NextResponse.json({ destination: "/discover" });
+    }
+
     return NextResponse.json({ destination: "/portal" });
   }
 
