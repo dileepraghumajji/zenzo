@@ -12,6 +12,7 @@ import type {
   VerificationStatus,
   DayOfWeek,
   AttendanceStatus,
+  InterestSlug,
 } from "../enums";
 
 export type {
@@ -23,6 +24,7 @@ export type {
   VerificationStatus,
   DayOfWeek,
   AttendanceStatus,
+  InterestSlug,
 } from "../enums";
 
 export type Json =
@@ -44,6 +46,11 @@ export type Database = {
           email: string;
           auth_provider: string;
           is_admin: boolean;
+          bio: string | null;
+          avatar_url: string | null;
+          username: string | null;
+          city: string | null;
+          onboarding_step: "interests_done" | "interests_skipped" | null;
           created_at: string;
         };
         Insert: {
@@ -53,9 +60,36 @@ export type Database = {
           email: string;
           auth_provider?: string;
           is_admin?: boolean;
+          bio?: string | null;
+          avatar_url?: string | null;
+          username?: string | null;
+          city?: string | null;
+          onboarding_step?: "interests_done" | "interests_skipped" | null;
         };
         Update: Partial<Omit<Database["public"]["Tables"]["users"]["Insert"], "id">>;
         Relationships: [];
+      };
+      user_interests: {
+        Row: {
+          user_id: string;
+          slug: InterestSlug;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          slug: InterestSlug;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["user_interests"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "user_interests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       clubs: {
         Row: {
@@ -71,9 +105,10 @@ export type Database = {
           verification_status: VerificationStatus;
           description: string | null;
           listed: boolean;
+          avg_rating: number | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["clubs"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["clubs"]["Row"], "id" | "created_at" | "avg_rating">;
         Update: Partial<Database["public"]["Tables"]["clubs"]["Insert"]>;
         Relationships: [
           {
@@ -332,6 +367,144 @@ export type Database = {
           {
             foreignKeyName: "payments_recorded_by_fkey";
             columns: ["recorded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      club_reviews: {
+        Row: {
+          id: string;
+          club_id: string;
+          reviewer_user_id: string;
+          rating: number;
+          review_text: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          club_id: string;
+          reviewer_user_id: string;
+          rating: number;
+          review_text?: string | null;
+          deleted_at?: string | null;
+        };
+        Update: {
+          rating?: number;
+          review_text?: string | null;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "club_reviews_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "club_reviews_reviewer_user_id_fkey";
+            columns: ["reviewer_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      member_achievements: {
+        Row: {
+          id: string;
+          user_id: string;
+          club_id: string;
+          title: string;
+          description: string | null;
+          badge_icon: string | null;
+          awarded_by: string | null;
+          awarded_at: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          club_id: string;
+          title: string;
+          description?: string | null;
+          badge_icon?: string | null;
+          awarded_by?: string | null;
+          awarded_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["member_achievements"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "member_achievements_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_achievements_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_achievements_awarded_by_fkey";
+            columns: ["awarded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      coach_ratings: {
+        Row: {
+          id: string;
+          coach_user_id: string;
+          club_id: string;
+          reviewer_user_id: string;
+          rating: number;
+          review_text: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          coach_user_id: string;
+          club_id: string;
+          reviewer_user_id: string;
+          rating: number;
+          review_text?: string | null;
+          deleted_at?: string | null;
+        };
+        Update: {
+          rating?: number;
+          review_text?: string | null;
+          club_id?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "coach_ratings_coach_user_id_fkey";
+            columns: ["coach_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coach_ratings_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coach_ratings_reviewer_user_id_fkey";
+            columns: ["reviewer_user_id"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];

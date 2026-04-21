@@ -447,10 +447,74 @@ Sprint N (Notifications) + Sprint Off (Offline Attendance) complete:
 - **Off1** — `lib/attendance-db.ts`: IndexedDB store (`zenzo-attendance`). API: `saveDraft`, `queueForSync`, `loadSession`, `clearSession`, `getAllQueued`.
 - **Off2+3** — `take-attendance-client.tsx`: draft saved on every toggle, restored on mount, network failures queue to IndexedDB, `online` listener auto-retries queue, sync-status pill, offline banner, button label adapts.
 
+### Session 26 — 2026-04-20
+Phase 2 consumer experience planned. Full sprint plan in `docs/consumer-experience.md`:
+- **UC1** — Interest Onboarding: post-signup interest selection screen (`/onboarding/interests`), `user_interests` + `interest_categories` tables, `POST /api/users/interests`, redirect logic wired into signup + OAuth callback.
+- **UC2** — Discovery Home: `/discover` page with invites banner + interest-matched club grid, `GET /api/discover` API, portal empty state updated to redirect to `/discover`.
+- **UC3** — Global Search: `/search` page (clubs / coaches / members tabs), `GET /api/search` API.
+- **UC4** — Public Profiles + Portal Nav: `/u/[username]` member profile, `/coaches/[userId]` coach profile, `/profile` own edit, portal bottom nav (Home / Discover / Search / Profile).
+- **UC5** — Ratings & Reviews: `club_reviews` + `coach_ratings` tables, star rating component in `@zenzo/ui`, review APIs.
+- **UC6** — Achievements: `member_achievements` table, award badge UI in club dashboard, achievements tab on member profile, display on public profile.
+- **New DB columns**: `users.bio`, `users.avatar_url`, `users.username`, `users.onboarding_step`.
+- Updated `docs/sprints.md` sprint order to reflect Phase 2 is now active.
+
+### Session 27 — 2026-04-21
+Sprint UC2 (Discovery Home) complete:
+- **UC2.1** — `GET /api/discover`: auth required, reads `user_interests` + `city`, maps interest slugs to `ClubCategory` values (boxing/martial_arts → `martial_arts`, fitness/crossfit → `gym`, dance → `dance`, yoga → `yoga`, other → `other`, swimming omitted — no matching category). Queries verified+listed clubs filtered by matched categories and user city. Counts pending invites via admin client (bypasses email/phone-keyed RLS). Returns `{ inviteCount, userCity, clubs[], hasMore, nextCursor }`. Cache-Control: `private, max-age=300`.
+- **UC2.2** — `/discover` page: `discover/layout.tsx` (header with wordmark + initials avatar), `discover/page.tsx` (SC shell with Suspense), `_components/discover-clubs.tsx` (async SC: invite banner if `inviteCount > 0`, "For you in [City]" heading, 2×3 club card grid with category badges, "Set your interests" nudge if no interests saved, empty state with "Explore all clubs →", "Explore all →" footer link). Skeleton: shimmer banner + 6 shimmer cards.
+- **UC2.3** — Portal routing: `portal/page.tsx` now redirects to `/discover` instead of showing EmptyState when user has no memberships. Removed `EmptyState` component. `POST /api/auth/profile`: no-staff users with `onboarding_step` set and no memberships now receive `{ destination: '/discover' }` (2 extra parallel queries: users.onboarding_step + club_memberships count).
+- **Bug fix** — Fixed pre-existing `toast()` call signature in `onboarding/interests/page.tsx` (was using `toast({ variant: 'destructive' })` — correct is `toast.error("...")`).
+
+### Session 28 — 2026-04-21
+Sprint UC4 (Public Profiles + Portal Nav) complete:
+- **UC4.1** — `ConsumerNav` client component (`components/consumer-nav.tsx`): desktop horizontal nav links (hidden md:flex inside header) + mobile fixed bottom nav (md:hidden). Active state via `usePathname()`. Updated `portal/layout.tsx`, `discover/layout.tsx`, new `profile/layout.tsx` — all share the nav shell and do a membership count to determine `homeHref`. Avatar in top bar links to `/profile`. `pb-16 md:pb-0` on main keeps content above mobile nav.
+- **UC4.2** — `PATCH /api/profile`: updates `full_name`, `phone`, `bio` (≤160), `username`, `avatar_url`, `city`. Validates username regex + reserved list; catches `23505` unique constraint → returns `{ error: "username_taken" }`.
+- **UC4.3** — `GET /api/profile/check-username?u=`: regex + reserved list + DB uniqueness check. Returns `{ available, reason? }`.
+- **UC4.4** — `/profile/page.tsx` (SC + Suspense) + `_components/profile-form.tsx` (client): avatar upload to Supabase Storage `user-avatars` bucket, bio textarea with 160-char counter, username with debounced availability indicator, city autocomplete, interest grid, parallel save of profile + interests.
+- **UC4.5** — `/u/[username]/page.tsx`: public member profile (service client). Avatar/initials, name, @username, member since, bio, interest pills, attendance count, active clubs list, achievements placeholder. SEO `generateMetadata()`.
+- **UC4.6** — `/coaches/[userId]/page.tsx`: public coach profile (service client). Bio, ratings placeholder, batch schedule, club links, reviews placeholder. 404 if user has no coach staff rows. SEO `generateMetadata()`.
+- **UC4.7** — `/clubs/[slug]/page.tsx`: added "Reviews" section with placeholder above the CTA.
+- **Middleware** — Added `/u/`, `/coaches/`, `/clubs/`, `/explore` to `PUBLIC_PATHS`.
+
+### Session 29 — 2026-04-21
+Sprint UC3 (Global Search) complete:
+- **UC3.1** — Migration `packages/database/migrations/007_search_indexes.sql`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` + GIN indexes on `clubs.name`, `users.full_name`, `users.username`.
+- **UC3.2** — `GET /api/search?q=&type=clubs|coaches|members`: clubs/coaches public (no auth); members auth required. Clubs: ILIKE on name + city, verified+listed only. Coaches: two-step (users ILIKE name → club_staff filter for coach role + clubs). Members: ILIKE on full_name + username, includes interest slugs + achievement_count (placeholder). Sanitizes `,*` from query string to prevent PostgREST filter injection. `/api/search` added to `PUBLIC_PATHS` in middleware.
+- **UC3.3** — `/search/page.tsx` (client component): sticky search input with clear button, 3-tab bar (Clubs/Coaches/Members), debounced 300ms, URL sync (`?q=&type=`), result cards per type (ClubCard/CoachCard/MemberCard), 5-item skeleton shimmer, empty state per tab, hint for unauthenticated members tab.
+- **UC3.4** — `/search/layout.tsx`: mirrors portal/discover layout with ConsumerNav + homeHref resolution.
+
+### Session 30 — 2026-04-21
+Sprint UC5 (Ratings & Reviews) complete:
+- **UC5.1** — Migration `packages/database/migrations/008_ratings.sql`: `club_reviews` (id, club_id, reviewer_user_id, rating 1–5, review_text ≤500, created_at, updated_at, deleted_at, UNIQUE per club+user) + `coach_ratings` (same shape + coach_user_id, UNIQUE per coach+club+user). RLS: public SELECT where not deleted, auth-only INSERT/UPDATE own rows. `avg_rating NUMERIC(3,2)` added to `clubs`, kept fresh by `refresh_club_avg_rating()` trigger on every `club_reviews` change.
+- **UC5.2** — `StarRating` in `packages/ui/src/components/star-rating.tsx`: readonly (full/half/empty based on float) + interactive (hover + click). Props: `value`, `max`, `interactive`, `onChange`, `size` (sm/md/lg). Exported from `@zenzo/ui`.
+- **UC5.3** — `GET/POST/PATCH/DELETE /api/clubs/[slug]/reviews`: GET public (uses `clubs.avg_rating` column + reviewer name join); POST requires active/expired membership; PATCH/DELETE operate on (club_id, reviewer_user_id) — one review per user per club enforced by DB UNIQUE.
+- **UC5.4** — `GET/POST/PATCH/DELETE /api/coaches/[userId]/ratings`: GET public (computes avg from all rows, returns last 10 with names); POST requires batch-assignment with this coach at the specified clubId; DELETE uses `?clubId=` query param.
+- **WriteReviewButton** (`clubs/[slug]/_components/write-review-button.tsx`): unauthenticated → redirect to `/login?redirect=…`. Dialog: interactive StarRating + 500-char textarea, PATCH if editing, DELETE button when editing. `router.refresh()` on success.
+- **WriteRatingButton** (`coaches/[userId]/_components/write-rating-button.tsx`): same pattern; club selector shown when coach is at multiple clubs.
+- **Club page** updated: parallel data fetches, `avg_rating` shown in hero, Reviews section with star summary + last 5 reviews with names + dates + write button.
+- **Coach page** updated: avg computed from all ratings, shown in header. Recent ratings with reviewer name + club attribution + write button.
+- **Type fixes**: `club_reviews.Insert` and `coach_ratings.Insert` defined explicitly with `deleted_at` optional. `SIZE_CLASS` typed as `Record<"sm"|"md"|"lg", string>`. `DialogContent` `title` prop passed correctly.
+
+### Session 31 — 2026-04-21
+Sprint UC6 (Member Achievements) complete:
+- **UC6.1** — Migration `009_achievements.sql`: `member_achievements` table (user_id, club_id, title, description, badge_icon, awarded_by, awarded_at). RLS: public SELECT, staff-only INSERT. Added `ACHIEVEMENT_TEMPLATES` const (12 presets: 💯🎂🥋🏆⭐🔥🌟🤝✅📅👑🎯) to `enums.ts` + exported from `index.ts`. Added `member_achievements` type to `types/index.ts`.
+- **UC6.2** — `GET/POST /api/clubs/[clubId]/members/[memberId]/achievements`: GET returns achievements for the membership with awarder names; POST requires owner or coach, auto-fills badge icon from template slug match.
+- **UC6.3** — `GET /api/users/[userId]/achievements`: Public endpoint (service client), returns all achievements across all clubs with club name + slug.
+- **UC6.4** — `AwardAchievementDialog` component: 12-template grid (tap to select, auto-fills title + description), Custom option, note textarea, date picker. "Award Badge" menu item added to member profile dropdown.
+- **UC6.5** — Achievements tab added to `member-profile-client.tsx` (5th tab, badge count pill). Shows achievement cards or empty state with CTA. Loaded server-side as `initialAchievements`, refreshed client-side after award without page reload.
+- **UC6.6** — `/u/[username]/page.tsx`: Replaced placeholder with real `member_achievements` data. Club names resolved in same batch query as membership clubs.
+
+### Session 32 — 2026-04-21
+Sprint UC7 (Razorpay Member Payments) complete:
+- **UC7.1 — Pay Now in portal** — `portal-payments.tsx` updated with "Pay ₹X now" CTA. Full Razorpay checkout flow: loads `checkout.js` script, calls `POST /api/portal/[clubSlug]/create-order` to get an order_id, opens checkout modal, verifies HMAC signature server-side via `POST /api/portal/[clubSlug]/verify-payment`, records payment in DB, advances `next_due_date` by billing cycle, reactivates membership to `active`. Shows inline success state. Button visible only for members with a fee plan on `active | overdue | expired` membership.
+- **UC7.2 — Send Payment Link** — `POST /api/clubs/[clubId]/members/[memberId]/payment-link` creates a Razorpay Payment Link (shareable URL). Member profile dropdown gains "Send Payment Link" item: opens dialog with URL, copy button, open button, and "Send via WhatsApp" deep-link with pre-filled message.
+- **`PaymentMethod.Razorpay = "razorpay"`** added to enum. Migration `010_razorpay_payment_method.sql` updates DB CHECK constraint.
+- **`lib/razorpay.ts`** — `createRazorpay()` factory (throws clearly if env vars missing).
+- **Env vars required**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `NEXT_PUBLIC_RAZORPAY_KEY_ID`.
+
 ### Up Next
 1. D5 — Real photography of gyms/coaches (needs assets from user)
-2. Android app (React Native / Expo) — Phase 2 consumer app
-3. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

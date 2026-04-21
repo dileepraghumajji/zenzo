@@ -17,6 +17,12 @@ import {
   UserMinus,
   CreditCard,
   CalendarDays,
+  Award,
+  Link2,
+  Copy,
+  ExternalLink,
+  Check as CheckIcon,
+  Loader2,
 } from "lucide-react";
 import {
   Avatar,
@@ -46,6 +52,7 @@ import {
 import { formatCurrency, formatDate } from "@zenzo/utils";
 import { MembershipStatus, AttendanceStatus } from "@zenzo/database/enums";
 import { RecordPaymentModal } from "./record-payment-modal";
+import { AwardAchievementDialog } from "./award-achievement-dialog";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -93,12 +100,22 @@ interface AvailableBatch {
   name: string;
 }
 
+interface Achievement {
+  id: string;
+  title: string;
+  description: string | null;
+  badgeIcon: string | null;
+  awardedAt: string;
+  awardedByName: string | null;
+}
+
 interface MemberProfileClientProps {
   clubSlug: string;
   member: MemberDetail;
   availablePlans: AvailablePlan[];
   availableBatches: AvailableBatch[];
   currentBatchIds: string[];
+  initialAchievements: Achievement[];
 }
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -116,7 +133,7 @@ const STATUS_CONFIG: Record<
 
 // ─── MemberProfileClient ───────────────────────────────────────────────────────
 
-export function MemberProfileClient({ clubSlug, member, availablePlans, availableBatches, currentBatchIds }: MemberProfileClientProps) {
+export function MemberProfileClient({ clubSlug, member, availablePlans, availableBatches, currentBatchIds, initialAchievements }: MemberProfileClientProps) {
   const router = useRouter();
   const statusCfg = STATUS_CONFIG[member.status] || { label: "Deleted", variant: "neutral" };
   const [isDeactivating, setIsDeactivating] = React.useState(false);
@@ -130,6 +147,14 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
   const [showPlanDialog, setShowPlanDialog] = React.useState(false);
   const [showBatchDialog, setShowBatchDialog] = React.useState(false);
   const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+  const [showAwardDialog, setShowAwardDialog] = React.useState(false);
+  const [showPaymentLinkDialog, setShowPaymentLinkDialog] = React.useState(false);
+  const [paymentLinkLoading, setPaymentLinkLoading] = React.useState(false);
+  const [paymentLinkUrl, setPaymentLinkUrl] = React.useState<string | null>(null);
+  const [paymentLinkError, setPaymentLinkError] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  const [achievements, setAchievements] = React.useState<Achievement[]>(initialAchievements);
 
   const [selectedPlanId, setSelectedPlanId] = React.useState(member.planId ?? "");
   const [selectedBatchId, setSelectedBatchId] = React.useState(currentBatchIds[0] ?? "");
@@ -170,6 +195,32 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
       setIsUpdatingPlan(false);
       setIsUpdatingBatch(false);
     }
+  };
+
+  const handleGeneratePaymentLink = async () => {
+    setPaymentLinkLoading(true);
+    setPaymentLinkError(null);
+    setPaymentLinkUrl(null);
+    try {
+      const res = await fetch(
+        `/api/clubs/${clubSlug}/members/${member.membershipId}/payment-link`,
+        { method: "POST" }
+      );
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate link");
+      setPaymentLinkUrl(data.url ?? null);
+    } catch (err) {
+      setPaymentLinkError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setPaymentLinkLoading(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!paymentLinkUrl) return;
+    await navigator.clipboard.writeText(paymentLinkUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const getDayOfMonth = (dateString: string) => {
@@ -261,6 +312,27 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
+                  icon={<Award className="size-4" />}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowAwardDialog(true);
+                  }}
+                >
+                  Award Badge
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  icon={<Link2 className="size-4" />}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowPaymentLinkDialog(true);
+                    handleGeneratePaymentLink();
+                  }}
+                >
+                  Send Payment Link
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
                   icon={<CreditCard className="size-4" />}
                   onSelect={(e) => {
                     e.preventDefault();
@@ -311,6 +383,14 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="progression">Progression</TabsTrigger>
+          <TabsTrigger value="achievements">
+            Achievements
+            {achievements.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary px-1.5 py-px text-[10px] font-bold text-primary-foreground leading-none">
+                {achievements.length}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Overview ─────────────────────────────────────────────────────── */}
@@ -473,6 +553,56 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
           <ComingSoon label="Belt / level progression" sprint="P1.1" />
         </TabsContent>
 
+        {/* ── Achievements ─────────────────────────────────────────────────── */}
+        <TabsContent value="achievements" className="mt-6">
+          <div className="flex justify-end mb-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Award className="size-3.5" />}
+              onClick={() => setShowAwardDialog(true)}
+            >
+              Award Badge
+            </Button>
+          </div>
+
+          {achievements.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {achievements.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-start gap-3 rounded-xl border border-border bg-background p-4"
+                >
+                  <span className="text-[28px] leading-none shrink-0">{a.badgeIcon ?? "🎯"}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-foreground leading-tight">{a.title}</p>
+                    {a.description && (
+                      <p className="text-[12px] text-muted mt-0.5">{a.description}</p>
+                    )}
+                    <p className="text-[11px] text-muted mt-1">
+                      {new Date(a.awardedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      {a.awardedByName && ` · by ${a.awardedByName}`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <p className="text-[15px] font-semibold text-heading mb-1">No badges yet</p>
+              <p className="text-[13px] text-muted mb-4">Award the first badge to {member.fullName}</p>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Award className="size-3.5" />}
+                onClick={() => setShowAwardDialog(true)}
+              >
+                Award First Badge
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+
       </Tabs>
 
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
@@ -604,6 +734,106 @@ export function MemberProfileClient({ clubSlug, member, availablePlans, availabl
           }}
         />
       )}
+
+      {/* ── Award Achievement Dialog ─────────────────────────────────────── */}
+      <AwardAchievementDialog
+        open={showAwardDialog}
+        onOpenChange={setShowAwardDialog}
+        clubSlug={clubSlug}
+        membershipId={member.membershipId}
+        memberName={member.fullName}
+        onSuccess={async () => {
+          // Refresh achievements list without full page reload
+          const res = await fetch(
+            `/api/clubs/${clubSlug}/members/${member.membershipId}/achievements`
+          );
+          if (res.ok) {
+            const data = await res.json() as Achievement[];
+            setAchievements(data);
+          }
+        }}
+      />
+
+      {/* ── Payment Link Dialog ──────────────────────────────────────────── */}
+      <Dialog
+        open={showPaymentLinkDialog}
+        onOpenChange={(open) => {
+          setShowPaymentLinkDialog(open);
+          if (!open) {
+            setPaymentLinkUrl(null);
+            setPaymentLinkError(null);
+            setCopied(false);
+          }
+        }}
+      >
+        <DialogContent title="Send Payment Link">
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Generate a Razorpay payment link for{" "}
+              <span className="font-semibold text-foreground">{member.fullName}</span>.
+              Share it via WhatsApp or copy and send directly.
+            </p>
+
+            {paymentLinkLoading && (
+              <div className="flex items-center justify-center gap-2 py-6 text-muted">
+                <Loader2 className="size-5 animate-spin" />
+                <span className="text-sm">Generating link…</span>
+              </div>
+            )}
+
+            {paymentLinkError && (
+              <div className="rounded-lg bg-error-subtle border border-error-accent px-4 py-3 text-sm text-error-foreground">
+                {paymentLinkError}
+              </div>
+            )}
+
+            {paymentLinkUrl && (
+              <div className="space-y-3">
+                <div className="rounded-lg bg-surface-subtle border border-border px-3 py-2 text-xs font-mono text-muted break-all select-all">
+                  {paymentLinkUrl}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCopyLink}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-surface-subtle transition-colors"
+                  >
+                    {copied ? (
+                      <><CheckIcon className="size-4 text-success-foreground" /> Copied</>
+                    ) : (
+                      <><Copy className="size-4" /> Copy link</>
+                    )}
+                  </button>
+                  <a
+                    href={paymentLinkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-surface-subtle transition-colors"
+                  >
+                    <ExternalLink className="size-4" /> Open
+                  </a>
+                </div>
+                {member.phone && (
+                  <a
+                    href={`https://wa.me/91${member.phone}?text=${encodeURIComponent(`Hi ${member.fullName.split(" ")[0]}! Here's your payment link for ${member.planName ?? "your membership"}: ${paymentLinkUrl}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#25D366] text-white text-sm font-semibold hover:bg-[#1ebe5d] transition-colors"
+                  >
+                    Send via WhatsApp
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button className="px-4 py-2 text-sm text-muted hover:text-foreground transition-colors">
+                Close
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

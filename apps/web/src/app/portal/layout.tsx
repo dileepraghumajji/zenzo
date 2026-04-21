@@ -1,13 +1,9 @@
-// /portal layout — consumer shell
-//
-// No hardcoded theme — inherits from next-themes (system/light/dark).
-// ThemeToggle in the header lets users switch explicitly.
-
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Bell } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "@/components/portal-theme-toggle";
+import { ConsumerNav } from "@/components/consumer-nav";
 
 export default async function PortalLayout({
   children,
@@ -21,11 +17,14 @@ export default async function PortalLayout({
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("full_name")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { count: membershipCount }] = await Promise.all([
+    supabase.from("users").select("full_name").eq("id", user.id).single(),
+    supabase
+      .from("club_memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .neq("status", "deleted"),
+  ]);
 
   const initials = (profile?.full_name ?? user.email ?? "?")
     .split(" ")
@@ -34,13 +33,17 @@ export default async function PortalLayout({
     .slice(0, 2)
     .toUpperCase();
 
+  const homeHref = (membershipCount ?? 0) > 0 ? "/portal" : "/discover";
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 bg-surface-subtle border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/portal">
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+          <Link href={homeHref}>
             <span className="text-h2 font-bold tracking-tight text-brand">zenzo</span>
           </Link>
+
+          <ConsumerNav homeHref={homeHref} />
 
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -52,14 +55,18 @@ export default async function PortalLayout({
               <Bell className="size-4 text-muted" />
             </Link>
 
-            <div className="size-9 rounded-full bg-primary flex items-center justify-center text-caption font-bold text-primary-foreground">
+            <Link
+              href="/profile"
+              className="size-9 rounded-full bg-primary flex items-center justify-center text-caption font-bold text-primary-foreground hover:opacity-90 transition-opacity"
+            >
               {initials}
-            </div>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main>{children}</main>
+      {/* pb-16 md:pb-0 keeps content above mobile bottom nav */}
+      <main className="pb-16 md:pb-0">{children}</main>
     </div>
   );
 }

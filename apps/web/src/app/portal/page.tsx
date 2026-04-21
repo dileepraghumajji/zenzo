@@ -75,7 +75,7 @@ async function MembershipList() {
     .order("joined_at", { ascending: false });
 
   if (!memberships || memberships.length === 0) {
-    return <EmptyState firstName={firstName} />;
+    redirect("/discover");
   }
 
   const clubIds = memberships.map((m) => m.club_id);
@@ -163,51 +163,6 @@ async function MembershipList() {
             {label}
           </Link>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
-
-function EmptyState({ firstName }: { firstName: string }) {
-  return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="text-center py-16 space-y-8">
-        <div className="size-20 rounded-full bg-primary-subtle flex items-center justify-center mx-auto">
-          <Building2 className="size-9 text-brand" />
-        </div>
-
-        <div>
-          <h2 className="text-h1 font-bold text-heading mb-2">Hey {firstName}!</h2>
-          <p className="text-body text-muted max-w-xs mx-auto">
-            You&apos;re not in any club yet. Join one to start tracking your fitness journey.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3 max-w-xs mx-auto">
-          <Link
-            href="/portal/invites"
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-body hover:bg-primary-hover transition-colors"
-          >
-            <Search className="size-4" />
-            Check for Invites
-          </Link>
-          <Link
-            href="/onboarding"
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-raised border border-border text-heading font-medium text-body hover:border-brand/40 transition-all"
-          >
-            <Plus className="size-4" />
-            Create a Club
-          </Link>
-          <Link
-            href="/explore"
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-raised border border-border text-heading font-medium text-body hover:border-brand/40 transition-all"
-          >
-            <Compass className="size-4" />
-            Explore Clubs
-          </Link>
-        </div>
       </div>
     </div>
   );

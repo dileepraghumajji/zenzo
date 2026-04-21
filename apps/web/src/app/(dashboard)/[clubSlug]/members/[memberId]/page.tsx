@@ -98,6 +98,35 @@ export default async function MemberProfilePage({ params }: Props) {
     .eq("membership_id", membership.id)
     .order("payment_date", { ascending: false });
 
+  // ── Fetch achievements for this member at this club ───────────────────────
+  const { data: achievementRows } = await supabase
+    .from("member_achievements")
+    .select("id, title, description, badge_icon, awarded_at, awarded_by")
+    .eq("user_id", params.memberId)
+    .eq("club_id", club.id)
+    .order("awarded_at", { ascending: false });
+
+  const awarderIds = [...new Set(
+    (achievementRows ?? []).map((a) => a.awarded_by).filter((id): id is string => Boolean(id))
+  )];
+  let awarderMap: Record<string, string> = {};
+  if (awarderIds.length > 0) {
+    const { data: awarders } = await supabase
+      .from("users")
+      .select("id, full_name")
+      .in("id", awarderIds);
+    awarderMap = Object.fromEntries((awarders ?? []).map((u) => [u.id, u.full_name]));
+  }
+
+  const initialAchievements = (achievementRows ?? []).map((a) => ({
+    id:            a.id,
+    title:         a.title,
+    description:   a.description,
+    badgeIcon:     a.badge_icon,
+    awardedAt:     a.awarded_at,
+    awardedByName: a.awarded_by ? (awarderMap[a.awarded_by] ?? null) : null,
+  }));
+
   const user = membership.users;
 
   return (
@@ -106,6 +135,7 @@ export default async function MemberProfilePage({ params }: Props) {
       availablePlans={availablePlans ?? []}
       availableBatches={(availableBatches ?? []).map((b) => ({ id: b.id, name: b.name }))}
       currentBatchIds={currentBatchIds}
+      initialAchievements={initialAchievements}
       member={{
         userId:          params.memberId,
         membershipId:    membership.id,

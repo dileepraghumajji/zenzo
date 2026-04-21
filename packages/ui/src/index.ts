@@ -83,6 +83,10 @@ export {
   SheetFooter,
 } from "./components/sheet";
 
+// StarRating — readonly display + interactive picker
+export { StarRating } from "./components/star-rating";
+export type { StarRatingProps } from "./components/star-rating";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type { AvatarProps }      from "./components/avatar";
 export type { BadgeProps }       from "./components/badge";
