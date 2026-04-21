@@ -55,6 +55,15 @@ export async function GET(request: Request) {
         .eq("user_id", data.user.id);
 
       if (!staff || staff.length === 0) {
+        // Check if this is a new user who hasn't done interest onboarding yet.
+        const { data: profile } = await supabase
+          .from("users")
+          .select("onboarding_step")
+          .eq("id", data.user.id)
+          .single();
+        if (!profile?.onboarding_step) {
+          return NextResponse.redirect(`${origin}/onboarding/interests`);
+        }
         return NextResponse.redirect(`${origin}/portal`);
       }
 

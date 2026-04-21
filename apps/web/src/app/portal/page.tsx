@@ -152,7 +152,7 @@ async function MembershipList() {
         {[
           { href: "/portal/invites", icon: Search,  label: "Invites" },
           { href: "/onboarding",     icon: Plus,    label: "New Club" },
-          { href: "/explore",        icon: Compass, label: "Explore" },
+          { href: "/discover",       icon: Compass, label: "Discover" },
         ].map(({ href, icon: Icon, label }) => (
           <Link
             key={href}
