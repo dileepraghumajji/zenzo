@@ -2,12 +2,13 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { createBrowserClient } from "@supabase/ssr";
 import { INTEREST_CATEGORIES, RESERVED_USERNAMES } from "@zenzo/database/enums";
 import type { Database } from "@zenzo/database";
 import { Button, FormField, Input, useToast } from "@zenzo/ui";
 import { cn } from "@zenzo/ui";
-import { Camera, Check, X, Loader2 } from "lucide-react";
+import { Camera, Check, X, Sun, Moon, Monitor, Loader2 } from "lucide-react";
 
 const CITIES = [
   "Mumbai", "Delhi", "Bengaluru", "Hyderabad", "Ahmedabad", "Chennai",
@@ -41,9 +42,16 @@ interface UsernameState {
   reason: string | null;
 }
 
+const THEME_OPTIONS = [
+  { value: "light",  label: "Light",  Icon: Sun     },
+  { value: "dark",   label: "Dark",   Icon: Moon    },
+  { value: "system", label: "System", Icon: Monitor },
+] as const;
+
 export function ProfileForm({ profile }: { profile: ProfileData }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState(profile.full_name);
@@ -52,12 +60,13 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
   const [username, setUsername] = useState(profile.username ?? "");
   const [city, setCity] = useState(profile.city ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(
     new Set(profile.interests)
   );
 
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [usernameState, setUsernameState] = useState<UsernameState>({
     checking: false,
     available: null,
@@ -113,7 +122,7 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
     }, 400);
   }, [profile.username]);
 
-  async function handleAvatarUpload(file: File) {
+  function handleAvatarSelect(file: File) {
     if (file.size > 2 * 1024 * 1024) {
       toast.error("Image must be under 2MB");
       return;
@@ -122,28 +131,9 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
       toast.error("Only JPEG, PNG, or WebP allowed");
       return;
     }
-
-    setUploading(true);
-    try {
-      const supabase = createBrowserClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const path = `avatars/${profile.id}.${ext}`;
-      const { error } = await supabase.storage
-        .from("user-avatars")
-        .upload(path, file, { upsert: true, contentType: file.type });
-
-      if (error) throw error;
-
-      const { data: { publicUrl } } = supabase.storage.from("user-avatars").getPublicUrl(path);
-      setAvatarUrl(`${publicUrl}?t=${Date.now()}`);
-    } catch {
-      toast.error("Failed to upload avatar");
-    } finally {
-      setUploading(false);
-    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPendingFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
   }
 
   async function handleSave() {
@@ -154,6 +144,26 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
 
     setSaving(true);
     try {
+      let finalAvatarUrl = avatarUrl;
+      if (pendingFile) {
+        const supabase = createBrowserClient<Database>(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const ext = pendingFile.name.split(".").pop() ?? "jpg";
+        const path = `avatars/${profile.id}.${ext}`;
+        const { error } = await supabase.storage
+          .from("user-avatars")
+          .upload(path, pendingFile, { upsert: true, contentType: pendingFile.type });
+        if (error) throw error;
+        const { data: { publicUrl } } = supabase.storage.from("user-avatars").getPublicUrl(path);
+        finalAvatarUrl = publicUrl;
+        setAvatarUrl(publicUrl);
+        setPendingFile(null);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl("");
+      }
+
       const [profileRes] = await Promise.all([
         fetch("/api/profile", {
           method: "PATCH",
@@ -163,7 +173,7 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
             phone,
             bio: bio || null,
             username: username || null,
-            avatar_url: avatarUrl || null,
+            avatar_url: finalAvatarUrl || null,
             city: city || null,
           }),
         }),
@@ -218,13 +228,13 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
       <div className="flex flex-col items-center gap-3">
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={saving}
           className="relative group"
         >
-          {avatarUrl ? (
+          {(previewUrl || avatarUrl) ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={avatarUrl}
+              src={previewUrl || avatarUrl}
               alt="Avatar"
               className="size-20 rounded-full object-cover border-2 border-border"
             />
@@ -234,11 +244,7 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
             </div>
           )}
           <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            {uploading ? (
-              <Loader2 className="size-5 text-white animate-spin" />
-            ) : (
-              <Camera className="size-5 text-white" />
-            )}
+            <Camera className="size-5 text-white" />
           </div>
         </button>
         <p className="text-caption text-muted">Tap to change photo</p>
@@ -249,7 +255,7 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) handleAvatarUpload(file);
+            if (file) handleAvatarSelect(file);
           }}
         />
       </div>
@@ -373,7 +379,34 @@ export function ProfileForm({ profile }: { profile: ProfileData }) {
         </div>
       </div>
 
-      <Button fullWidth size="lg" onClick={handleSave} loading={saving} disabled={saving || uploading}>
+      {/* Appearance */}
+      <div className="space-y-3">
+        <p className="text-label font-medium text-heading">Appearance</p>
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_OPTIONS.map(({ value, label, Icon }) => {
+            const active = theme === value;
+            return (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className={cn(
+                  "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
+                  active
+                    ? "border-brand bg-surface-raised"
+                    : "border-transparent bg-surface-raised hover:border-border"
+                )}
+              >
+                <Icon className={cn("size-5", active ? "text-brand" : "text-muted")} />
+                <span className={cn("text-[10px] font-medium", active ? "text-foreground" : "text-muted")}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Button fullWidth size="lg" onClick={handleSave} loading={saving} disabled={saving}>
         Save profile
       </Button>
     </div>

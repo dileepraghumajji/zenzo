@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="forgeOrange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF6014" />
+      <stop offset="100%" stop-color="#C84A08" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Pure White Background -->
+  <rect width="1024" height="1024" fill="#FFFFFF" />
+  
+  <!-- Dynamic Z Logo -->
+  <g transform="translate(512, 512) skewX(-12) translate(-512, -512)" fill="url(#forgeOrange)" stroke="url(#forgeOrange)" stroke-width="2" stroke-linejoin="miter">
+    <!-- Top Bar -->
+    <rect x="230" y="256" width="564" height="142" />
+    <!-- Bottom Bar -->
+    <rect x="230" y="626" width="564" height="142" />
+    <!-- Diagonal -->
+    <polygon points="794,256 620,256 230,768 404,768" />
+  </g>
+</svg>

@@ -520,9 +520,58 @@ Consumer onboarding routing fixes:
 - **api/auth/profile**: Added case for `!onboardingDone && !hasMemberships` → `/onboarding/interests` to handle returning users (existed before interests feature) who haven't done onboarding.
 - **Portal quick links**: Changed "Explore" → `/discover` (was incorrectly pointing to the old `/explore` page).
 
+### Session 34 — 2026-04-22
+Sprint SD1 (Schema Migrations) complete:
+- **SD1.1** — `012_search_extensions.sql`: `CREATE EXTENSION IF NOT EXISTS postgis` + `pg_trgm`.
+- **SD1.2** — `013_clubs_search_columns.sql`: 17 new columns on `clubs` (tagline, cover_image_url, gallery, subcategories, amenities, operating_hours, area, full_address, google_maps_url, social_links, location geography(Point,4326), featured, review_count, member_count, price_range, starting_price_paise, established_year, search_vector tsvector). GIST/GIN indexes. tsvector trigger + back-fill. `sync_club_member_count` + `sync_club_review_count` triggers for denormalized counts.
+- **SD1.3** — `014_users_coach_columns.sql`: 7 nullable coach columns on `users` (specializations[], certifications[], experience_years, languages[], is_freelance, session_price_paise, is_available). GIN index on specializations.
+- **SD1.4** — `enums.ts`: added `PriceRange`, `CoachAvailability`, `AMENITY_OPTIONS`, `SPECIALIZATION_OPTIONS`. `types/index.ts`: all new columns typed; clubs `Insert` explicit with new columns optional. `index.ts`: all new enums/consts exported.
+
+### Session 35 — 2026-04-22
+Sprint SD3 (UI Components) complete:
+- **Shared types** — `apps/web/src/components/search/types.ts`: `ClubSearchResult`, `CoachSearchResult`, `CoachAffiliation`, `SuggestResult`, `FilterState`, `EMPTY_FILTERS`, `OperatingHours`.
+- **SD3.1** — `ClubCard` + `ClubCardSkeleton`: cover image (`next/image`), verified badge overlay, open/closed dot (computed from `operating_hours`), category + subcategory pills, star rating + review count, area + distance, amenity icons (top 4 + overflow count), starting price.
+- **SD3.2** — `CoachCard` + `CoachCardSkeleton`: circular avatar with availability dot (green/amber), specialization pills, rating, experience years, languages, club affiliation, session price.
+- **SD3.3** — `SearchBar`: debounced 300ms, loading spinner, `role="combobox"` + full keyboard nav (↑↓ Enter Escape), dropdown with `localStorage` recent searches and `/api/search/suggest` autocomplete, "Clear history" link.
+- **SD3.4** — `QuickFilterChips`: horizontal scroll `scrollbar-none`, All · Gyms · Yoga · Martial Arts · Dance · Coaches, `active:scale-95`.
+- **SD3.5** — `NearMeButton`: `navigator.geolocation`, loading state, radius pills (1/3/5/10km), inline error text.
+- **SD3.6** — `FeaturedCarousel`: client-side fetch from `/api/search/featured`, horizontal scroll, skeleton, hidden when empty.
+- **SD3.7** — `AdvancedFilters`: Shadcn `Sheet` (bottom mobile / right desktop), collapsible sections, `MultiChips` + `SinglePills`, sticky "Clear All" + "Apply (N)" footer.
+- **SD3.8** — `ActiveFilterChips`: removable chips per active filter, individual X buttons, "Clear all" link when 2+.
+- **SD3.9** — `ResultCount`: "Showing N gyms in City", skeleton shimmer while loading.
+- **SD3.10** — `NoResults`, `ErrorState`, `LocationDenied` in `empty-error-states.tsx`.
+
+### Session 36 — 2026-04-22
+Sprint SD4 (Integration & UX) complete:
+- **Auth change** — `/explore` is now auth-only: removed from `PUBLIC_PATHS` in middleware, added to `isDashboardPath`. `ConsumerShell` (requireAuth=true) used in new `explore/layout.tsx`.
+- **SD4.1** — `explore/page.tsx` rebuilt: simple shell with Suspense, `max-w-6xl` grid container, `Metadata` export.
+- **SD4.1 client** — `explore/_components/explore-client.tsx` replaced with full implementation: `SearchBar` + `QuickFilterChips` + `NearMeButton` + `AdvancedFilters` all in sticky top bar; `ActiveFilterChips` conditional; `ResultCount`; `FeaturedCarousel` when no query; results grid.
+- **SD4.2** — Results grid: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`. Switches between `ClubCard`/`CoachCard` grids based on mode.
+- **SD4.3** — Full URL-driven state: `useSearchParams` init + `router.replace()` on every change. Params: `q`, `category`, `subcategories`, `amenities`, `specializations`, `price_range`, `min_rating`, `availability`, `sort`, `lat`, `lng`, `radius`. Back button works, URLs are shareable.
+- **SD4.4** — Cursor-based infinite scroll: `IntersectionObserver` on sentinel div (300px rootMargin), appends to results list, loading spinner at bottom, "All N results shown" end-of-list message.
+- **SD4.5/4.6** — Recent searches + debounced search already in `SearchBar` (SD3.3). Debounce 350ms on query change.
+- **Two-mode switching** — `category === "coaches"` → fetches `/api/search/coaches`, renders `CoachCard` grid; otherwise → `/api/search/clubs` + `ClubCard`. Mode switch clears incompatible filters.
+- **SD4.7** — Using `useSearchParams` + `router.replace()` (nuqs not installed — no need to add it).
+
+### Session 37 — 2026-04-22
+Sprint SD5 (Map View) complete:
+- **SD5.1** — Installed `leaflet @types/leaflet` in `apps/web`. OpenStreetMap tiles, no API key. Imperative Leaflet API in `useEffect` — no `react-leaflet` needed.
+- **SD5.2** — `search-map.tsx`: color-coded `L.divIcon` circle pins per category (gym=blue, yoga=green, martial_arts=red, dance=purple, other=gray). `L.Popup` mini-cards: cover image, name, area, rating, "View details →" link. Auto `fitBounds` on first render, suppressed after user interaction (`interactedRef`). `flyTo()` on geo change. Separate `LayerGroup` for clean marker refresh. Added `location: { lat, lng } | null` to `ClubSearchResult` in `types.ts`.
+- **SD5.3** — Desktop split view: `lg:grid lg:grid-cols-[1fr_420px]` in map mode. List on left (hidden on mobile), sticky map on right (`lg:sticky lg:top-36`, `h-[calc(100dvh-148px)]`). Mobile shows full-height map only.
+- **SD5.4** — List/Map toggle: `aria-pressed` + `role="group"` buttons, `?view=map` in URL preserved across all filter changes via `viewRef`. Map toggle disabled in coach mode. `dynamic({ ssr: false })` wraps `SearchMap` in `explore-client.tsx`.
+
+### Session 38 — 2026-04-22
+Sprint SD6 (Polish & Accessibility) complete:
+- **SD6.1** — `globals.css`: added `@keyframes cardFadeIn` (0→1 opacity + translateY 6px→0) + `.card-fade-in` utility class (0.25s ease-out).
+- **SD6.2** — `club-card.tsx` + `coach-card.tsx`: upgraded `hover:shadow-md` → `hover:shadow-lg`, added `active:scale-[0.98]` micro-interaction on card press. `QuickFilterChips` / `MultiChips` / `SinglePills` already had `active:scale-95`. Stars already amber.
+- **SD6.3** — `near-me-button.tsx`: added dynamic `aria-label` ("Getting your location..." / "Disable location search" / "Search near my location"). `SearchBar` already had full `role="combobox"` + `aria-expanded` + `aria-activedescendant`. Cards already had `role="article"` + `aria-label`. Filter sheet already had `aria-label`.
+- **SD6.4** — `explore-client.tsx` view toggle: `py-1.5` → `py-2` for better touch target height (~36px). No horizontal overflow issues found.
+- **SD6.5** — `explore-client.tsx`: staggered card fade-in via `card-fade-in` class + `animationDelay: i * 50ms` (capped at 10 × 50ms = 500ms for infinite scroll additions). Map container gets `card-fade-in` for view toggle cross-fade. Skeletons already matched card dimensions.
+
 ### Up Next
-1. D5 — Real photography of gyms/coaches (needs assets from user)
-2. P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
+- SD7 — Seed Data (15 Vizag gyms + 20 coaches for visual QA)
+- D5 — Real photography of gyms/coaches (needs assets from user)
+- P0.8 — WhatsApp via Interakt (deferred — needs API key + infra)
 
 ### P0 Build Order (after refactor)
 1. **P0.1** — Auth + Club Onboarding wizard (5-step)

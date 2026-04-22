@@ -13,11 +13,13 @@
 
 import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { Database } from "@zenzo/database";
 
 export function createSupabaseServerClient() {
   const cookieStore = cookies();
+  const requestHeaders = headers();
+  const authHeader = requestHeaders.get("Authorization");
 
   const cookieMethods: CookieMethodsServer = {
     getAll() {
@@ -38,7 +40,16 @@ export function createSupabaseServerClient() {
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: cookieMethods }
+    {
+      cookies: cookieMethods,
+      ...(authHeader && {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }),
+    }
   );
 }
 

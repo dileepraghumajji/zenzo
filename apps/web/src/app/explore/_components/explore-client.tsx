@@ -1,363 +1,530 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
-import { Search, MapPin, X, ChevronRight } from "lucide-react";
-import { ClubCategory } from "@zenzo/database/enums";
+import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { List, Map as MapIcon } from "lucide-react";
+import { cn } from "@zenzo/ui";
+import { SearchBar }         from "@/components/search/search-bar";
+import { QuickFilterChips }  from "@/components/search/quick-filter-chips";
+import { NearMeButton }      from "@/components/search/near-me-button";
+import { ActiveFilterChips } from "@/components/search/active-filter-chips";
+import { AdvancedFilters }   from "@/components/search/advanced-filters";
+import { ResultCount }       from "@/components/search/result-count";
+import { FeaturedCarousel }  from "@/components/search/featured-carousel";
+import { ClubCard, ClubCardSkeleton }   from "@/components/search/club-card";
+import { CoachCard, CoachCardSkeleton } from "@/components/search/coach-card";
+import { NoResults, ErrorState }        from "@/components/search/empty-error-states";
+import type { ClubSearchResult, CoachSearchResult, FilterState } from "@/components/search/types";
+import { EMPTY_FILTERS } from "@/components/search/types";
+import type { SearchMapProps } from "@/components/search/search-map";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Dynamic map import (SSR disabled — Leaflet is browser-only) ──────────────
 
-interface Club {
-  id: string;
-  name: string;
-  slug: string;
-  city: string | null;
-  business_type: string;
-  description: string | null;
+const SearchMap = dynamic<SearchMapProps>(
+  () => import("@/components/search/search-map").then((m) => ({ default: m.SearchMap })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full rounded-xl bg-muted border border-border animate-pulse" style={{ minHeight: "400px" }} />
+    ),
+  }
+);
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type GeoState  = { lat: number; lng: number; radius: number };
+type ViewMode  = "list" | "map";
+
+interface ClubsApiResponse {
+  clubs:      ClubSearchResult[];
+  total:      number;
+  nextCursor: string | null;
+  hasMore:    boolean;
 }
 
-interface ApiResponse {
-  clubs: Club[];
-  total: number;
-  page: number;
-  pageSize: number;
+interface CoachesApiResponse {
+  coaches:    CoachSearchResult[];
+  total:      number;
+  nextCursor: string | null;
+  hasMore:    boolean;
 }
 
-// ─── Category config ─────────────────────────────────────────────────────────
+// ─── URL helpers ──────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  { value: "",                        label: "All"          },
-  { value: ClubCategory.Gym,          label: "Gym"          },
-  { value: ClubCategory.MartialArts,  label: "Martial Arts" },
-  { value: ClubCategory.Dance,        label: "Dance"        },
-  { value: ClubCategory.Yoga,         label: "Yoga"         },
-  { value: ClubCategory.Other,        label: "Other"        },
-] as const;
-
-const CATEGORY_META: Record<string, { emoji: string; label: string }> = {
-  [ClubCategory.Gym]:         { emoji: "🏋️", label: "Gym"         },
-  [ClubCategory.MartialArts]: { emoji: "🥋", label: "Martial Arts" },
-  [ClubCategory.Dance]:       { emoji: "💃", label: "Dance"        },
-  [ClubCategory.Yoga]:        { emoji: "🧘", label: "Yoga"         },
-  [ClubCategory.Other]:       { emoji: "⭐", label: "Other"        },
-};
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function ClubCardSkeleton() {
-  return (
-    <div className="bg-surface-raised border border-border rounded-xl p-5">
-      <div className="flex items-start gap-4">
-        <div className="skeleton-shimmer w-12 h-12 rounded-xl shrink-0" />
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="skeleton-shimmer h-5 w-3/5 rounded" />
-          <div className="flex gap-2">
-            <div className="skeleton-shimmer h-4 w-16 rounded-md" />
-            <div className="skeleton-shimmer h-4 w-20 rounded" />
-          </div>
-          <div className="skeleton-shimmer h-3 w-full rounded" />
-          <div className="skeleton-shimmer h-3 w-4/5 rounded" />
-        </div>
-      </div>
-    </div>
-  );
+function paramsToFilters(params: URLSearchParams): FilterState {
+  return {
+    category:        params.get("category") ?? "",
+    subcategories:   params.get("subcategories")?.split(",").filter(Boolean) ?? [],
+    amenities:       params.get("amenities")?.split(",").filter(Boolean) ?? [],
+    specializations: params.get("specializations")?.split(",").filter(Boolean) ?? [],
+    price_range:     params.get("price_range") ?? "",
+    min_rating:      parseFloat(params.get("min_rating") ?? "0") || 0,
+    availability:    params.get("availability") ?? "",
+    sort:            params.get("sort") ?? "relevance",
+  };
 }
 
-// ─── Club card ───────────────────────────────────────────────────────────────
-
-function ClubCard({ club }: { club: Club }) {
-  const meta = CATEGORY_META[club.business_type] ?? { emoji: "⭐", label: club.business_type };
-
-  return (
-    <Link
-      href={`/clubs/${club.slug}`}
-      className="group flex items-start gap-4 bg-surface-raised border border-border rounded-xl p-5 hover:border-brand/50 hover:shadow-md transition-all duration-200"
-    >
-      {/* Category emoji tile */}
-      <div className="shrink-0 w-12 h-12 rounded-xl bg-primary-subtle flex items-center justify-center text-2xl select-none">
-        {meta.emoji}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-h3 text-heading leading-snug group-hover:text-brand transition-colors">
-            {club.name}
-          </h3>
-          <ChevronRight className="size-4 text-muted shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all mt-0.5" />
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-caption font-medium bg-primary-subtle text-brand">
-            {meta.label}
-          </span>
-          {club.city && (
-            <span className="inline-flex items-center gap-1 text-caption text-muted">
-              <MapPin className="size-3 shrink-0" />
-              {club.city}
-            </span>
-          )}
-        </div>
-
-        {club.description && (
-          <p className="text-caption text-muted line-clamp-2 leading-relaxed">
-            {club.description}
-          </p>
-        )}
-      </div>
-    </Link>
-  );
+function stateToParams(q: string, f: FilterState, geo: GeoState | null): URLSearchParams {
+  const p = new URLSearchParams();
+  if (q)                              p.set("q",               q);
+  if (f.category)                     p.set("category",        f.category);
+  if (f.subcategories.length)         p.set("subcategories",   f.subcategories.join(","));
+  if (f.amenities.length)             p.set("amenities",       f.amenities.join(","));
+  if (f.specializations.length)       p.set("specializations", f.specializations.join(","));
+  if (f.price_range)                  p.set("price_range",     f.price_range);
+  if (f.min_rating > 0)               p.set("min_rating",      String(f.min_rating));
+  if (f.availability)                 p.set("availability",    f.availability);
+  if (f.sort && f.sort !== "relevance") p.set("sort",          f.sort);
+  if (geo) {
+    p.set("lat",    String(geo.lat));
+    p.set("lng",    String(geo.lng));
+    p.set("radius", String(geo.radius));
+  }
+  return p;
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+function buildClubApiParams(q: string, f: FilterState, geo: GeoState | null, cursor: string | null): URLSearchParams {
+  const p = new URLSearchParams();
+  if (q)                          p.set("q",             q);
+  if (f.category && f.category !== "coaches") p.set("category", f.category);
+  if (f.subcategories.length)     p.set("subcategories", f.subcategories.join(","));
+  if (f.amenities.length)         p.set("amenities",     f.amenities.join(","));
+  if (f.price_range)              p.set("price_range",   f.price_range);
+  if (f.min_rating > 0)           p.set("min_rating",    String(f.min_rating));
+  if (f.sort)                     p.set("sort",          f.sort);
+  if (geo) {
+    p.set("lat",       String(geo.lat));
+    p.set("lng",       String(geo.lng));
+    p.set("radius_km", String(geo.radius));
+  }
+  if (cursor) p.set("cursor", cursor);
+  return p;
+}
+
+function buildCoachApiParams(q: string, f: FilterState, geo: GeoState | null, cursor: string | null): URLSearchParams {
+  const p = new URLSearchParams();
+  if (q)                          p.set("q",               q);
+  if (f.specializations.length)   p.set("specializations", f.specializations.join(","));
+  if (f.availability)             p.set("availability",    f.availability);
+  if (f.min_rating > 0)           p.set("min_rating",      String(f.min_rating));
+  if (f.sort)                     p.set("sort",            f.sort);
+  if (geo) {
+    p.set("lat",       String(geo.lat));
+    p.set("lng",       String(geo.lng));
+    p.set("radius_km", String(geo.radius));
+  }
+  if (cursor) p.set("cursor", cursor);
+  return p;
+}
+
+// ─── ExploreClient ────────────────────────────────────────────────────────────
 
 export default function ExploreClient() {
-  // ── UI state ────────────────────────────────────────────────────────────────
-  const [clubs,          setClubs]          = useState<Club[]>([]);
-  const [total,          setTotal]          = useState(0);
-  const [hasMore,        setHasMore]        = useState(true);
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
+  // ── State (initialised from URL) ──────────────────────────────────────────
+  const [query,   setQuery]   = useState(() => searchParams.get("q") ?? "");
+  const [filters, setFilters] = useState<FilterState>(() => paramsToFilters(searchParams));
+  const [geo,     setGeo]     = useState<GeoState | null>(() => {
+    const lat    = parseFloat(searchParams.get("lat")    ?? "");
+    const lng    = parseFloat(searchParams.get("lng")    ?? "");
+    const radius = parseFloat(searchParams.get("radius") ?? "5");
+    return !isNaN(lat) && !isNaN(lng) ? { lat, lng, radius } : null;
+  });
+  const [view, setView] = useState<ViewMode>(() =>
+    searchParams.get("view") === "map" ? "map" : "list"
+  );
+
+  // ── Results ───────────────────────────────────────────────────────────────
+  const [clubs,   setClubs]   = useState<ClubSearchResult[]>([]);
+  const [coaches, setCoaches] = useState<CoachSearchResult[]>([]);
+  const [total,   setTotal]   = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore,    setLoadingMore]    = useState(false);
+  const [searching,      setSearching]      = useState(false);
+  const [hasError,       setHasError]       = useState(false);
 
-  // ── Controlled filter inputs ────────────────────────────────────────────────
-  const [q,        setQ]        = useState("");
-  const [category, setCategory] = useState("");
-  const [city,     setCity]     = useState("");
-
-  // ── Refs: avoid stale closures in IntersectionObserver ───────────────────
-  const pageRef       = useRef(0);
+  // ── Refs for stable closures ──────────────────────────────────────────────
+  const queryRef      = useRef(query);
+  const filtersRef    = useRef(filters);
+  const geoRef        = useRef(geo);
+  const viewRef       = useRef<ViewMode>(view);
+  const nextCursorRef = useRef<string | null>(null);
   const hasMoreRef    = useRef(true);
   const isLoadingRef  = useRef(false);
-  const filtersRef    = useRef({ q: "", category: "", city: "" });
   const requestIdRef  = useRef(0);
   const sentinelRef   = useRef<HTMLDivElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cityTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Core fetch ──────────────────────────────────────────────────────────────
+  useEffect(() => { queryRef.current   = query;   }, [query]);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  useEffect(() => { geoRef.current     = geo;     }, [geo]);
+  useEffect(() => { viewRef.current    = view;    }, [view]);
+
+  const isCoachMode = filters.category === "coaches";
+  const showMap     = view === "map" && !isCoachMode;
+
+  // ── URL push ──────────────────────────────────────────────────────────────
+  const pushUrl = useCallback((q: string, f: FilterState, g: GeoState | null) => {
+    const p = stateToParams(q, f, g);
+    if (viewRef.current === "map") p.set("view", "map");
+    const qs = p.toString();
+    router.replace(qs ? `/explore?${qs}` : "/explore", { scroll: false });
+  }, [router]);
+
+  // ── Core fetch ────────────────────────────────────────────────────────────
   const fetchPage = useCallback(async (replace: boolean) => {
-    // Load-more: skip if in progress or nothing left
     if (!replace && (isLoadingRef.current || !hasMoreRef.current)) return;
 
     isLoadingRef.current = true;
-    const reqId    = ++requestIdRef.current;
-    const nextPage = replace ? 1 : pageRef.current + 1;
-
-    if (replace) setInitialLoading(true);
-    else         setLoadingMore(true);
-
-    const params = new URLSearchParams({ page: String(nextPage) });
+    const reqId  = ++requestIdRef.current;
+    const cursor = replace ? null : nextCursorRef.current;
+    const q = queryRef.current;
     const f = filtersRef.current;
-    if (f.q)        params.set("q",        f.q);
-    if (f.category) params.set("category", f.category);
-    if (f.city)     params.set("city",     f.city);
+    const g = geoRef.current;
+
+    if (replace) { setInitialLoading(true); setHasError(false); }
+    else         { setLoadingMore(true); }
 
     try {
-      const res  = await fetch(`/api/clubs/explore?${params.toString()}`);
-      if (!res.ok) return;
-      const data: ApiResponse = await res.json();
-
-      // Discard stale responses (happens when filters change mid-flight)
-      if (reqId !== requestIdRef.current) return;
-
-      const clubs = data.clubs ?? [];
-      const more  = nextPage * (data.pageSize ?? 20) < (data.total ?? 0);
-      pageRef.current    = nextPage;
-      hasMoreRef.current = more;
-
-      setClubs((prev) => replace ? clubs : [...prev, ...clubs]);
-      setTotal(data.total ?? 0);
-      setHasMore(more);
+      if (f.category === "coaches") {
+        const params = buildCoachApiParams(q, f, g, cursor);
+        const res    = await fetch(`/api/search/coaches?${params.toString()}`);
+        if (reqId !== requestIdRef.current) return;
+        if (!res.ok) { setHasError(true); return; }
+        const data = await res.json() as CoachesApiResponse;
+        if (reqId !== requestIdRef.current) return;
+        nextCursorRef.current = data.nextCursor;
+        hasMoreRef.current    = data.hasMore;
+        setCoaches((prev) => replace ? data.coaches : [...prev, ...data.coaches]);
+        setTotal(data.total);
+        setHasMore(data.hasMore);
+      } else {
+        const params = buildClubApiParams(q, f, g, cursor);
+        const res    = await fetch(`/api/search/clubs?${params.toString()}`);
+        if (reqId !== requestIdRef.current) return;
+        if (!res.ok) { setHasError(true); return; }
+        const data = await res.json() as ClubsApiResponse;
+        if (reqId !== requestIdRef.current) return;
+        nextCursorRef.current = data.nextCursor;
+        hasMoreRef.current    = data.hasMore;
+        setClubs((prev) => replace ? data.clubs : [...prev, ...data.clubs]);
+        setTotal(data.total);
+        setHasMore(data.hasMore);
+      }
     } catch {
-      // Network errors: silently fail, user can scroll to retry
+      if (reqId === requestIdRef.current) setHasError(true);
     } finally {
       if (reqId === requestIdRef.current) {
         isLoadingRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
+        setSearching(false);
       }
     }
   }, []);
 
-  // ── Initial load ────────────────────────────────────────────────────────────
-  useEffect(() => {
+  // ── Reset + refetch ───────────────────────────────────────────────────────
+  const resetAndFetch = useCallback(() => {
+    nextCursorRef.current = null;
+    hasMoreRef.current    = true;
+    setHasMore(true);
+    setClubs([]);
+    setCoaches([]);
     void fetchPage(true);
   }, [fetchPage]);
 
-  // ── IntersectionObserver: trigger load-more as user nears bottom ───────────
+  // ── Initial load ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    void fetchPage(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Infinite scroll ───────────────────────────────────────────────────────
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting && hasMoreRef.current && !isLoadingRef.current) {
           void fetchPage(false);
         }
       },
-      { rootMargin: "300px" },
+      { rootMargin: "300px" }
     );
-
     observer.observe(el);
     return () => observer.disconnect();
   }, [fetchPage]);
 
-  // ── Reset + re-fetch (called after filter changes) ─────────────────────────
-  const resetAndFetch = useCallback(() => {
-    hasMoreRef.current = true;
-    pageRef.current    = 0;
-    setHasMore(true);
-    void fetchPage(true);
-  }, [fetchPage]);
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
-  // ── Filter handlers ─────────────────────────────────────────────────────────
-  const handleSearchChange = (value: string) => {
-    setQ(value);
-    filtersRef.current = { ...filtersRef.current, q: value };
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(resetAndFetch, 350);
-  };
+  function handleQueryChange(q: string) {
+    setQuery(q);
+    queryRef.current = q;
+    setSearching(true);
+    if (queryTimerRef.current) clearTimeout(queryTimerRef.current);
+    queryTimerRef.current = setTimeout(() => {
+      pushUrl(q, filtersRef.current, geoRef.current);
+      resetAndFetch();
+    }, 350);
+  }
 
-  const handleCityChange = (value: string) => {
-    setCity(value);
-    filtersRef.current = { ...filtersRef.current, city: value };
-    if (cityTimerRef.current) clearTimeout(cityTimerRef.current);
-    cityTimerRef.current = setTimeout(resetAndFetch, 350);
-  };
-
-  const handleCategoryChange = (value: string) => {
-    setCategory(value);
-    filtersRef.current = { ...filtersRef.current, category: value };
+  function handleCategoryChange(cat: string) {
+    const modeSwitch = (filtersRef.current.category === "coaches") !== (cat === "coaches");
+    const newFilters: FilterState = modeSwitch
+      ? { ...EMPTY_FILTERS, category: cat, sort: filtersRef.current.sort }
+      : { ...filtersRef.current, category: cat };
+    setFilters(newFilters);
+    filtersRef.current = newFilters;
+    pushUrl(queryRef.current, newFilters, geoRef.current);
     resetAndFetch();
-  };
+  }
 
-  const clearSearch = () => handleSearchChange("");
-  const clearCity   = () => handleCityChange("");
+  function handleFiltersApply(f: FilterState) {
+    setFilters(f);
+    filtersRef.current = f;
+    pushUrl(queryRef.current, f, geoRef.current);
+    resetAndFetch();
+  }
 
-  const activeFilters = q || category || city;
+  function handleFilterRemove(patch: Partial<FilterState>) {
+    const newFilters = { ...filtersRef.current, ...patch };
+    setFilters(newFilters);
+    filtersRef.current = newFilters;
+    pushUrl(queryRef.current, newFilters, geoRef.current);
+    resetAndFetch();
+  }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  function handleClearAll() {
+    const f = { ...EMPTY_FILTERS };
+    setFilters(f);
+    filtersRef.current = f;
+    pushUrl(queryRef.current, f, geoRef.current);
+    resetAndFetch();
+  }
+
+  function handleGeoSuccess(lat: number, lng: number, radius: number) {
+    const g = { lat, lng, radius };
+    setGeo(g);
+    geoRef.current = g;
+    pushUrl(queryRef.current, filtersRef.current, g);
+    resetAndFetch();
+  }
+
+  function handleGeoClear() {
+    setGeo(null);
+    geoRef.current = null;
+    pushUrl(queryRef.current, filtersRef.current, null);
+    resetAndFetch();
+  }
+
+  function handleViewChange(v: ViewMode) {
+    setView(v);
+    viewRef.current = v;
+    const p = stateToParams(queryRef.current, filtersRef.current, geoRef.current);
+    if (v === "map") p.set("view", "map");
+    const qs = p.toString();
+    router.replace(qs ? `/explore?${qs}` : "/explore", { scroll: false });
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  const resultItems = isCoachMode ? coaches : clubs;
+  const hasAnyFilter = !!(
+    query ||
+    filters.category ||
+    filters.amenities.length ||
+    filters.specializations.length ||
+    filters.price_range ||
+    filters.min_rating ||
+    filters.availability ||
+    (filters.sort && filters.sort !== "relevance")
+  );
+
+  // ── Shared grid content ───────────────────────────────────────────────────
+
+  const gridContent = initialLoading ? (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 6 }).map((_, i) =>
+        isCoachMode ? <CoachCardSkeleton key={i} /> : <ClubCardSkeleton key={i} />
+      )}
+    </div>
+  ) : hasError ? (
+    <ErrorState onRetry={() => { setHasError(false); resetAndFetch(); }} />
+  ) : resultItems.length === 0 ? (
+    <NoResults
+      query={query}
+      category={filters.category || undefined}
+      onClearFilters={hasAnyFilter ? handleClearAll : undefined}
+    />
+  ) : (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {isCoachMode
+        ? coaches.map((c, i) => (
+            <div key={c.user_id} className="card-fade-in" style={{ animationDelay: `${Math.min(i, 10) * 50}ms` }}>
+              <CoachCard coach={c} showDistance={!!geo} />
+            </div>
+          ))
+        : clubs.map((c, i) => (
+            <div key={c.id} className="card-fade-in" style={{ animationDelay: `${Math.min(i, 10) * 50}ms` }}>
+              <ClubCard club={c} showDistance={!!geo} />
+            </div>
+          ))
+      }
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pt-2">
 
       {/* ── Sticky filter bar ─────────────────────────────────────────────── */}
       <div className="sticky top-0 z-40 -mx-4 px-4 pt-4 pb-3 bg-background border-b border-border space-y-3">
+        <SearchBar
+          value={query}
+          onChange={handleQueryChange}
+          onSearch={handleQueryChange}
+          loading={searching}
+          placeholder="Search gyms, coaches, yoga studios..."
+        />
 
-        {/* Search + city row */}
-        <div className="flex gap-2">
-
-          {/* Search input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
-            <input
-              type="text"
-              value={q}
-              placeholder="Search clubs by name…"
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full pl-10 pr-8 py-2.5 rounded-lg border border-border bg-surface-raised text-body text-heading placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand/60 transition"
-            />
-            {q && (
-              <button
-                onClick={clearSearch}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-heading transition"
-                aria-label="Clear search"
-              >
-                <X className="size-4" />
-              </button>
-            )}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
+            <QuickFilterChips active={filters.category} onChange={handleCategoryChange} />
           </div>
-
-          {/* City input */}
-          <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
-            <input
-              type="text"
-              value={city}
-              placeholder="City"
-              onChange={(e) => handleCityChange(e.target.value)}
-              className="w-28 pl-9 pr-7 py-2.5 rounded-lg border border-border bg-surface-raised text-body text-heading placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand/60 transition"
-            />
-            {city && (
-              <button
-                onClick={clearCity}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-heading transition"
-                aria-label="Clear city"
-              >
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
+          <AdvancedFilters
+            filters={filters}
+            onApply={handleFiltersApply}
+            mode={isCoachMode ? "coaches" : "clubs"}
+          />
         </div>
 
-        {/* Category chips — horizontally scrollable on mobile */}
-        <div className="flex gap-2 overflow-x-auto scrollbar-none">
-          {CATEGORIES.map((cat) => {
-            const active = category === cat.value;
-            const emoji  = cat.value ? CATEGORY_META[cat.value]?.emoji : null;
-            return (
-              <button
-                key={cat.value}
-                onClick={() => handleCategoryChange(cat.value)}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-caption font-medium border transition-all
-                  ${active
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-surface-raised border-border text-muted hover:border-brand/40 hover:text-heading"
-                  }`}
-              >
-                {emoji && <span className="text-xs leading-none">{emoji}</span>}
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+        <NearMeButton
+          active={!!geo}
+          onGeoSuccess={handleGeoSuccess}
+          onGeoClear={handleGeoClear}
+        />
       </div>
 
-      {/* ── Result count ──────────────────────────────────────────────────── */}
+      {/* ── Active filter chips ───────────────────────────────────────────── */}
+      <ActiveFilterChips
+        filters={filters}
+        onRemove={handleFilterRemove}
+        onClearAll={handleClearAll}
+      />
+
+      {/* ── Result count + view mode toggle ──────────────────────────────── */}
       {!initialLoading && (
-        <p className="text-caption text-muted px-0.5">
-          {total === 0
-            ? "No clubs found"
-            : `${total} club${total !== 1 ? "s" : ""}${activeFilters ? " matching your filters" : ""}`
-          }
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <ResultCount
+            total={total}
+            category={isCoachMode ? undefined : filters.category}
+            loading={false}
+          />
+
+          {/* Map/List toggle — clubs only (coaches have no geo data) */}
+          {!isCoachMode && (
+            <div
+              role="group"
+              aria-label="View mode"
+              className="flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 flex-shrink-0"
+            >
+              <button
+                onClick={() => handleViewChange("list")}
+                aria-label="List view"
+                aria-pressed={view === "list"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                  view === "list"
+                    ? "bg-surface-subtle text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <List className="size-3.5" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                onClick={() => handleViewChange("map")}
+                aria-label="Map view"
+                aria-pressed={view === "map"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                  view === "map"
+                    ? "bg-surface-subtle text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <MapIcon className="size-3.5" />
+                <span className="hidden sm:inline">Map</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ── Club list ─────────────────────────────────────────────────────── */}
-      {initialLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => <ClubCardSkeleton key={i} />)}
-        </div>
-      ) : clubs.length === 0 ? (
-        <div className="text-center py-20 space-y-3">
-          <div className="text-5xl">🔍</div>
-          <p className="text-h3 text-heading">No clubs found</p>
-          <p className="text-body text-muted max-w-xs mx-auto">
-            Try different filters — more clubs join Zenzo every week.
-          </p>
+      {/* ── Featured carousel (list view, no active filters) ──────────────── */}
+      {!showMap && !hasAnyFilter && !initialLoading && !isCoachMode && (
+        <FeaturedCarousel />
+      )}
+
+      {/* ── Results area ─────────────────────────────────────────────────── */}
+      {showMap ? (
+        // Map view: split layout on desktop, full map on mobile
+        <div className="lg:grid lg:grid-cols-[1fr_420px] lg:gap-4 lg:items-start">
+
+          {/* Left: scrollable list (desktop only) */}
+          <div className="hidden lg:block space-y-4">
+            {gridContent}
+
+            {loadingMore && (
+              <div className="flex justify-center py-6">
+                <div className="size-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+              </div>
+            )}
+
+            {!hasMore && !initialLoading && resultItems.length > 0 && (
+              <p className="text-center text-caption text-muted py-8">
+                All {total} result{total !== 1 ? "s" : ""} shown
+              </p>
+            )}
+          </div>
+
+          {/* Right: sticky Leaflet map */}
+          <div className="lg:sticky lg:top-36 card-fade-in">
+            <SearchMap
+              clubs={clubs}
+              geo={geo ?? undefined}
+              className={cn(
+                "w-full rounded-xl overflow-hidden border border-border",
+                "h-[calc(100dvh-200px)] lg:h-[calc(100dvh-148px)]"
+              )}
+            />
+          </div>
         </div>
       ) : (
-        <div className="space-y-3">
-          {clubs.map((club) => <ClubCard key={club.id} club={club} />)}
-        </div>
+        // List view: standard grid
+        <>
+          {gridContent}
+
+          {loadingMore && (
+            <div className="flex justify-center py-6">
+              <div className="size-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+            </div>
+          )}
+
+          {!hasMore && !initialLoading && resultItems.length > 0 && (
+            <p className="text-center text-caption text-muted py-8">
+              All {total} result{total !== 1 ? "s" : ""} shown
+            </p>
+          )}
+        </>
       )}
 
-      {/* ── Loading more skeletons ────────────────────────────────────────── */}
-      {loadingMore && (
-        <div className="space-y-3">
-          <ClubCardSkeleton />
-          <ClubCardSkeleton />
-        </div>
-      )}
-
-      {/* ── End of results ────────────────────────────────────────────────── */}
-      {!hasMore && !initialLoading && clubs.length > 0 && (
-        <p className="text-center text-caption text-muted py-8">
-          You&apos;ve seen all {total} club{total !== 1 ? "s" : ""}
-        </p>
-      )}
-
-      {/* Sentinel: IntersectionObserver watches this to trigger load-more */}
+      {/* Sentinel for IntersectionObserver (always present) */}
       <div ref={sentinelRef} className="h-1" aria-hidden="true" />
     </div>
   );

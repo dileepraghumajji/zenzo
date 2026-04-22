@@ -102,6 +102,40 @@ export const RESERVED_USERNAMES = [
   "admin", "zenzo", "support", "api", "portal", "discover", "search", "profile", "settings", "help", "about"
 ] as const;
 
+export const PriceRange = {
+  Budget:  "budget",
+  Mid:     "mid",
+  Premium: "premium",
+} as const;
+export type PriceRange = (typeof PriceRange)[keyof typeof PriceRange];
+
+export const CoachAvailability = {
+  Available:      "available",
+  Busy:           "busy",
+  NotAccepting:   "not_accepting",
+} as const;
+export type CoachAvailability = (typeof CoachAvailability)[keyof typeof CoachAvailability];
+
+export const AMENITY_OPTIONS = [
+  { value: "ac",      label: "AC" },
+  { value: "parking", label: "Parking" },
+  { value: "shower",  label: "Shower" },
+  { value: "locker",  label: "Locker Room" },
+  { value: "steam",   label: "Steam Room" },
+  { value: "sauna",   label: "Sauna" },
+  { value: "cafe",    label: "Café" },
+  { value: "wifi",    label: "Wi-Fi" },
+] as const;
+
+export const SPECIALIZATION_OPTIONS = [
+  { value: "weight_loss",      label: "Weight Loss" },
+  { value: "muscle_gain",      label: "Muscle Gain" },
+  { value: "rehab",            label: "Rehabilitation" },
+  { value: "sports_specific",  label: "Sports-Specific" },
+  { value: "prenatal",         label: "Prenatal" },
+  { value: "postnatal",        label: "Postnatal" },
+] as const;
+
 export const ACHIEVEMENT_TEMPLATES = [
   { slug: "100_classes",       title: "100 Classes",       icon: "💯", description: "Attended 100 classes" },
   { slug: "1_year_member",     title: "1 Year Member",     icon: "🎂", description: "Been a member for 1 year" },

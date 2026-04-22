@@ -13,6 +13,7 @@ import type {
   DayOfWeek,
   AttendanceStatus,
   InterestSlug,
+  PriceRange,
 } from "../enums";
 
 export type {
@@ -25,6 +26,7 @@ export type {
   DayOfWeek,
   AttendanceStatus,
   InterestSlug,
+  PriceRange,
 } from "../enums";
 
 export type Json =
@@ -51,6 +53,14 @@ export type Database = {
           username: string | null;
           city: string | null;
           onboarding_step: "interests_done" | "interests_skipped" | null;
+          // Coach discovery columns (SD1.3) — null for non-coaches
+          specializations: string[] | null;
+          certifications: string[] | null;
+          experience_years: number | null;
+          languages: string[] | null;
+          is_freelance: boolean;
+          session_price_paise: number | null;
+          is_available: boolean;
           created_at: string;
         };
         Insert: {
@@ -65,6 +75,13 @@ export type Database = {
           username?: string | null;
           city?: string | null;
           onboarding_step?: "interests_done" | "interests_skipped" | null;
+          specializations?: string[] | null;
+          certifications?: string[] | null;
+          experience_years?: number | null;
+          languages?: string[] | null;
+          is_freelance?: boolean;
+          session_price_paise?: number | null;
+          is_available?: boolean;
         };
         Update: Partial<Omit<Database["public"]["Tables"]["users"]["Insert"], "id">>;
         Relationships: [];
@@ -106,9 +123,55 @@ export type Database = {
           description: string | null;
           listed: boolean;
           avg_rating: number | null;
+          // Search & discovery columns (SD1.2)
+          tagline: string | null;
+          cover_image_url: string | null;
+          gallery: string[] | null;
+          subcategories: string[] | null;
+          amenities: string[] | null;
+          operating_hours: Json | null;
+          area: string | null;
+          full_address: string | null;
+          google_maps_url: string | null;
+          social_links: Json | null;
+          location: string | null;  // PostGIS geography serialised as WKT/GeoJSON by supabase-js
+          featured: boolean;
+          review_count: number;
+          member_count: number;
+          price_range: PriceRange | null;
+          starting_price_paise: number | null;
+          established_year: number | null;
+          search_vector: string | null; // TSVECTOR — only used server-side
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["clubs"]["Row"], "id" | "created_at" | "avg_rating">;
+        Insert: {
+          slug: string;
+          name: string;
+          business_type: ClubCategory;
+          owner_id: string;
+          verification_status?: VerificationStatus;
+          listed?: boolean;
+          featured?: boolean;
+          city?: string | null;
+          phone?: string | null;
+          logo_url?: string | null;
+          terminology?: Json;
+          description?: string | null;
+          tagline?: string | null;
+          cover_image_url?: string | null;
+          gallery?: string[] | null;
+          subcategories?: string[] | null;
+          amenities?: string[] | null;
+          operating_hours?: Json | null;
+          area?: string | null;
+          full_address?: string | null;
+          google_maps_url?: string | null;
+          social_links?: Json | null;
+          location?: string | null;
+          price_range?: PriceRange | null;
+          starting_price_paise?: number | null;
+          established_year?: number | null;
+        };
         Update: Partial<Database["public"]["Tables"]["clubs"]["Insert"]>;
         Relationships: [
           {

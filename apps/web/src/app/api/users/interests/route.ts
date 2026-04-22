@@ -15,6 +15,19 @@ export async function POST(request: Request) {
   const body = await request.json();
   const slugs: string[] = body.slugs || [];
   const city: string | undefined = body.city;
+  const skip: boolean = body.skip === true;
+
+  // If skipping, allow empty slugs — just mark onboarding as skipped
+  if (skip && slugs.length === 0) {
+    const { error } = await supabase
+      .from("users")
+      .update({ onboarding_step: "interests_skipped" })
+      .eq("id", user.id);
+    if (error) {
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, skipped: true });
+  }
 
   if (!Array.isArray(slugs) || slugs.length === 0) {
     return NextResponse.json({ error: "At least one interest is required" }, { status: 400 });

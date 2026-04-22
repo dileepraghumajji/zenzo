@@ -1,6 +1,8 @@
 // /clubs/[slug] — public club listing page
 // No auth required. Returns 404 if club is not verified.
 
+export const dynamic = "force-dynamic";
+
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Phone, Users, Clock, MessageCircle } from "lucide-react";
@@ -174,16 +176,7 @@ export default async function PublicClubPage({
   const reviewCount = reviews?.length ?? 0;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Back to explore */}
-      <div className="border-b border-border bg-surface-raised">
-        <div className="max-w-2xl mx-auto px-4 py-3">
-          <Link href="/explore" className="text-caption text-muted hover:text-brand transition-colors">
-            ← Back to Explore
-          </Link>
-        </div>
-      </div>
-
+    <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
         {/* Hero */}
         <div className="space-y-2">

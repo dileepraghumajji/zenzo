@@ -22,21 +22,18 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-// Routes that don't require authentication
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/forgot-password",
   "/onboarding",    // page handles its own auth redirect
   "/auth/",         // Supabase auth callbacks (e.g. /auth/reset-password)
+  "/api/",          // let API routes handle their own auth and return JSON
   "/m/",            // member portal (token-gated, not session-gated)
   "/checkin",       // QR code attendance check-in (token-gated, no session needed)
-  "/api/checkin",   // QR check-in API (public, token-gated)
-  "/api/search",    // search API — clubs/coaches tabs are public; members tab handles auth itself
   "/u/",            // public member profiles
   "/coaches/",      // public coach profiles
   "/clubs/",        // public club pages
-  "/explore",       // public club discovery
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -47,7 +44,7 @@ function isPublicPath(pathname: string): boolean {
 // Routes that require authentication (dashboard routes match /:tenantSlug/*)
 function isDashboardPath(pathname: string): boolean {
   // Match /something/something — at least two segments means a tenant route
-  return /^\/[^/]+\//.test(pathname) || pathname.startsWith("/discover") || pathname.startsWith("/portal") || pathname.startsWith("/profile");
+  return /^\/[^/]+\//.test(pathname) || pathname.startsWith("/discover") || pathname.startsWith("/portal") || pathname.startsWith("/profile") || pathname.startsWith("/explore");
 }
 
 export async function middleware(request: NextRequest) {

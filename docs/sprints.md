@@ -541,8 +541,18 @@ W   → WhatsApp (Interakt)        DEFERRED — needs paid API key
     Enrollment flow (select plan → pay → activate)
     Native app (React Native / Expo)
     Club SaaS billing
-    Featured listings
     Phone OTP login
+
+── Sprint SD — Search & Discovery 100x Upgrade ───────────────────
+    Full spec: docs/sprint-sd.md
+    SD0 → Gap Analysis           ⬜ Not started (approval gate)
+    SD1 → Schema Migrations      ⬜ Not started (PostGIS, tsvector, coaches table)
+    SD2 → Search APIs            ⬜ Not started (text+geo+filters+cursor pagination)
+    SD3 → UI Components          ⬜ Not started (ClubCard, CoachCard, SearchBar, Filters)
+    SD4 → Integration & UX       ⬜ Not started (/explore rebuild, URL state, infinite scroll)
+    SD5 → Map View               ⬜ Not started (Leaflet + OSM)
+    SD6 → Polish                 ⬜ Not started (animations, a11y, responsive QA)
+    SD7 → Seed Data              ⬜ Not started (15 Vizag gyms + 20 coaches)
 ```
 
 ---
